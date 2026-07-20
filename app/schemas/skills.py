@@ -30,3 +30,20 @@ class CommentScreeningItem(BaseModel):
 
 class CommentScreeningResult(BaseModel):
     items: list[CommentScreeningItem]
+
+
+class UserLeadResult(BaseModel):
+    lead_grade: Literal["H", "A", "B", "C"]
+    is_valid_lead: bool = True
+    lead_summary: str = ""
+    purchase_stage: str | None = None
+    target_brands: list[str] = []
+    target_models: list[str] = []
+    core_needs: list[str] = []
+    main_concerns: list[str] = []
+    purchase_time: str | None = None
+    usage_scenario: str | None = None
+    recommended_entry_point: str | None = None
+    verification_questions: list[str] = []
+    evidence_comment_ids: list[str] = []
+    confidence: float = 0.0
