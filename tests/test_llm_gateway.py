@@ -1,8 +1,10 @@
+import httpx
 import pytest
 
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
+from app.llm.openai_compat import OpenAICompatProvider
 from app.models import LlmCallLog
 
 
@@ -46,3 +48,49 @@ async def test_gateway_raises_after_max_retries():
     gw = LLMGateway(FlakyProvider(fail_times=99), max_retries=2)
     with pytest.raises(LLMError):
         await gw.chat([{"role": "user", "content": "hi"}])
+
+
+def _provider_with_transport(handler) -> OpenAICompatProvider:
+    transport = httpx.MockTransport(handler)
+    return OpenAICompatProvider(base_url="https://api.example.com",
+                                api_key="sk-test", timeout=5,
+                                transport=transport)
+
+
+async def test_openai_compat_provider_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/chat/completions"
+        assert request.headers["Authorization"] == "Bearer sk-test"
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "hello"}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 5},
+        })
+
+    provider = _provider_with_transport(handler)
+    resp = await provider.chat([{"role": "user", "content": "hi"}],
+                               model="gpt", temperature=0.1)
+    assert resp.text == "hello"
+    assert resp.prompt_tokens == 3
+    assert resp.completion_tokens == 5
+
+
+async def test_openai_compat_provider_non_json_body_raises_llm_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="oops")
+
+    provider = _provider_with_transport(handler)
+    with pytest.raises(LLMError):
+        await provider.chat([{"role": "user", "content": "hi"}],
+                            model="gpt", temperature=0.1)
+
+
+async def test_openai_compat_provider_empty_content_raises_llm_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": ""}}],
+        })
+
+    provider = _provider_with_transport(handler)
+    with pytest.raises(LLMError):
+        await provider.chat([{"role": "user", "content": "hi"}],
+                            model="gpt", temperature=0.1)
