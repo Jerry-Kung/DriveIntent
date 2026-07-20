@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 from app.config import settings
@@ -6,6 +7,8 @@ from app.llm.base import LLMError, LLMProvider, LLMResponse
 from app.llm.mock import MockProvider
 from app.llm.openai_compat import OpenAICompatProvider
 from app.models import LlmCallLog
+
+logger = logging.getLogger(__name__)
 
 
 class LLMGateway:
@@ -55,6 +58,8 @@ class LLMGateway:
                 return resp
             except LLMError as e:
                 last_error = e
+                logger.warning("LLM 调用失败 skill=%s 第 %d/%d 次: %s",
+                               skill_id, attempt + 1, self.max_retries, e)
                 self._log(skill_id=skill_id, skill_version=skill_version,
                           prompt_version=prompt_version, model=model,
                           messages=messages, resp=None, error=str(e),

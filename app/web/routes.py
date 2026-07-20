@@ -1,4 +1,6 @@
+import logging
 import tempfile
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -9,11 +11,13 @@ from pydantic import BaseModel
 from app.db import SessionLocal
 from app.importer.core import import_bundle
 from app.importer.excel import parse_excel
-from app.models import Lead
+from app.models import Lead, Video
 from app.services.aggregation import build_user_evidence
 from app.services.leads import lead_to_dict, leads_to_csv, query_leads
 from app.workflow.pipeline import advance, schedule_analysis
 from app.workflow.tasks import list_failed_tasks, retry_task, task_counts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(
@@ -33,20 +37,23 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
 
 
+# 同步端点：FastAPI 会放到线程池执行，解析与批量入库不会阻塞事件循环
 @router.post("/api/import")
-async def api_import(file: UploadFile, db=Depends(get_db)):
+def api_import(file: UploadFile, db=Depends(get_db)):
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
-            tmp.write(await file.read())
+            tmp.write(file.file.read())
         bundle = parse_excel(tmp_path)
     except ValueError as e:
         raise HTTPException(400, str(e))
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
+    start = time.monotonic()
     stats = import_bundle(db, bundle)
+    logger.info("导入耗时 %.1fs", time.monotonic() - start)
     return stats.model_dump()
 
 
@@ -54,7 +61,12 @@ async def api_import(file: UploadFile, db=Depends(get_db)):
 def api_start(db=Depends(get_db)):
     created = schedule_analysis(db)
     created += advance(db)
-    return {"created": created}
+    video_count = db.query(Video).count()
+    logger.info("启动分析: 新建任务 %d 个（库内视频 %d 个）", created, video_count)
+    resp: dict = {"created": created}
+    if video_count == 0:
+        resp["message"] = "数据库中没有视频数据，请先导入 Excel"
+    return resp
 
 
 @router.get("/api/analysis/progress")

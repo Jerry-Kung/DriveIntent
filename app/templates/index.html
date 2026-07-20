@@ -60,7 +60,8 @@ async function doStart() {
   const r = await fetch('/api/analysis/start', {method: 'POST'});
   const d = await r.json();
   document.getElementById('start-result').textContent =
-    `新建任务 ${d.created} 个`;
+    d.message ? `新建任务 ${d.created} 个：${d.message}`
+              : `新建任务 ${d.created} 个`;
 }
 async function refresh() {
   const r = await fetch('/api/analysis/progress');

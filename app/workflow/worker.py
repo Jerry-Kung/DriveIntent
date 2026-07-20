@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from app.config import settings
 from app.skills.executor import SkillExecutor
@@ -25,6 +26,10 @@ class Worker:
             task = claim_next(session)
             if task is None:
                 return False
+            logger.info("开始任务 #%s %s target=%s (第 %d 次尝试)",
+                        task.id, task.task_type, task.target_id,
+                        task.attempt_count)
+            start = time.monotonic()
             error: str | None = None
             try:
                 if task.task_type == VIDEO_CONTEXT_SKILL:
@@ -52,6 +57,9 @@ class Worker:
             if error is not None:
                 # 持久失败时节流，避免对故障中的 LLM/DB 热循环重试
                 await asyncio.sleep(self.poll_interval)
+            else:
+                logger.info("任务 #%s 完成，耗时 %.1fs",
+                            task.id, time.monotonic() - start)
             return True
         finally:
             session.close()
