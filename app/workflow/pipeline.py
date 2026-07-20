@@ -3,12 +3,13 @@ import json
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Comment, Video
+from app.models import AnalysisResult, Comment, Video
 from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
                                 VideoContextResult)
 from app.services.results import get_current_result, save_result
 from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
+from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
 COMMENT_SCREENING_SKILL = "comment_lead_screening"
@@ -144,3 +145,73 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
             for cid in out.evidence_comment_ids if cid in content_map]
         upsert_lead(session, user_id, out, evidence_comments,
                     SKILL_VERSIONS[USER_ANALYSIS_SKILL])
+
+
+def schedule_analysis(session: Session) -> int:
+    created = 0
+    for (vid,) in session.query(Video.id).all():
+        ctx = get_current_result(
+            session, target_type="video", target_id=str(vid),
+            skill_id=VIDEO_CONTEXT_SKILL,
+            skill_version=SKILL_VERSIONS[VIDEO_CONTEXT_SKILL])
+        if ctx is not None:
+            continue
+        if create_task(session, task_type=VIDEO_CONTEXT_SKILL,
+                       target_type="video", target_id=str(vid),
+                       skill_version=SKILL_VERSIONS[VIDEO_CONTEXT_SKILL]):
+            created += 1
+    return created
+
+
+def _upstream_done(session: Session) -> bool:
+    from app.models import AnalysisTask
+    open_upstream = (session.query(AnalysisTask)
+                     .filter(AnalysisTask.task_type.in_(
+                         [VIDEO_CONTEXT_SKILL, COMMENT_SCREENING_SKILL]),
+                         AnalysisTask.status.in_(["pending", "running"]))
+                     .count())
+    return open_upstream == 0
+
+
+def advance(session: Session) -> int:
+    from app.models import AnalysisTask
+    from app.services.aggregation import candidate_user_ids
+    created = 0
+
+    # 1) 语境已完成的视频 → 建评论批次任务（每视频只建一次）
+    ctx_rows = (session.query(AnalysisResult)
+                .filter_by(target_type="video",
+                           skill_id=VIDEO_CONTEXT_SKILL,
+                           skill_version=SKILL_VERSIONS[VIDEO_CONTEXT_SKILL],
+                           status="success").all())
+    for ctx in ctx_rows:
+        video_id = int(ctx.target_id)
+        has_batch = (session.query(AnalysisTask)
+                     .filter(AnalysisTask.task_type == COMMENT_SCREENING_SKILL,
+                             AnalysisTask.target_id.like(f"{video_id}:%"))
+                     .first())
+        if has_batch:
+            continue
+        comment_ids = [cid for (cid,) in
+                       session.query(Comment.id)
+                       .filter(Comment.video_id == video_id)
+                       .order_by(Comment.id).all()]
+        size = settings.comment_batch_size
+        for idx in range(0, len(comment_ids), size):
+            batch = comment_ids[idx:idx + size]
+            if create_task(
+                    session, task_type=COMMENT_SCREENING_SKILL,
+                    target_type="comment_batch",
+                    target_id=f"{video_id}:{idx // size}",
+                    skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL],
+                    payload={"video_id": video_id, "comment_ids": batch}):
+                created += 1
+
+    # 2) 语境+筛选全部完结 → 为候选用户建用户分析任务
+    if _upstream_done(session):
+        for uid in candidate_user_ids(session):
+            if create_task(session, task_type=USER_ANALYSIS_SKILL,
+                           target_type="user", target_id=str(uid),
+                           skill_version=SKILL_VERSIONS[USER_ANALYSIS_SKILL]):
+                created += 1
+    return created

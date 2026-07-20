@@ -1,0 +1,58 @@
+import asyncio
+import logging
+
+from app.config import settings
+from app.skills.executor import SkillExecutor
+from app.workflow.pipeline import (COMMENT_SCREENING_SKILL,
+                                   USER_ANALYSIS_SKILL, VIDEO_CONTEXT_SKILL,
+                                   advance, run_user_analysis,
+                                   run_video_context, screen_comment_batch)
+from app.workflow.tasks import claim_next, finish_task
+
+logger = logging.getLogger(__name__)
+
+
+class Worker:
+    def __init__(self, session_factory, executor: SkillExecutor,
+                 poll_interval: float | None = None):
+        self.session_factory = session_factory
+        self.executor = executor
+        self.poll_interval = poll_interval or settings.worker_poll_interval
+
+    async def run_once(self) -> bool:
+        session = self.session_factory()
+        task = claim_next(session)
+        if task is None:
+            return False
+        error: str | None = None
+        try:
+            if task.task_type == VIDEO_CONTEXT_SKILL:
+                await run_video_context(session, self.executor,
+                                        int(task.target_id))
+            elif task.task_type == COMMENT_SCREENING_SKILL:
+                await screen_comment_batch(
+                    session, self.executor,
+                    int(task.payload["video_id"]),
+                    list(task.payload["comment_ids"]))
+            elif task.task_type == USER_ANALYSIS_SKILL:
+                await run_user_analysis(session, self.executor,
+                                        int(task.target_id))
+            else:
+                error = f"未知任务类型: {task.task_type}"
+        except Exception as e:
+            logger.exception("任务 %s 执行失败", task.id)
+            error = str(e)[:2000]
+        finish_task(session, task, error=error)
+        advance(session)
+        return True
+
+    async def _loop(self, stop_event: asyncio.Event) -> None:
+        while not stop_event.is_set():
+            worked = await self.run_once()
+            if not worked:
+                await asyncio.sleep(self.poll_interval)
+
+    async def run_forever(self, stop_event: asyncio.Event) -> None:
+        loops = [self._loop(stop_event)
+                 for _ in range(settings.worker_concurrency)]
+        await asyncio.gather(*loops)
