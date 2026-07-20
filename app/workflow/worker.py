@@ -21,34 +21,46 @@ class Worker:
 
     async def run_once(self) -> bool:
         session = self.session_factory()
-        task = claim_next(session)
-        if task is None:
-            return False
-        error: str | None = None
         try:
-            if task.task_type == VIDEO_CONTEXT_SKILL:
-                await run_video_context(session, self.executor,
-                                        int(task.target_id))
-            elif task.task_type == COMMENT_SCREENING_SKILL:
-                await screen_comment_batch(
-                    session, self.executor,
-                    int(task.payload["video_id"]),
-                    list(task.payload["comment_ids"]))
-            elif task.task_type == USER_ANALYSIS_SKILL:
-                await run_user_analysis(session, self.executor,
-                                        int(task.target_id))
-            else:
-                error = f"未知任务类型: {task.task_type}"
-        except Exception as e:
-            logger.exception("任务 %s 执行失败", task.id)
-            error = str(e)[:2000]
-        finish_task(session, task, error=error)
-        advance(session)
-        return True
+            task = claim_next(session)
+            if task is None:
+                return False
+            error: str | None = None
+            try:
+                if task.task_type == VIDEO_CONTEXT_SKILL:
+                    await run_video_context(session, self.executor,
+                                            int(task.target_id))
+                elif task.task_type == COMMENT_SCREENING_SKILL:
+                    await screen_comment_batch(
+                        session, self.executor,
+                        int(task.payload["video_id"]),
+                        list(task.payload["comment_ids"]))
+                elif task.task_type == USER_ANALYSIS_SKILL:
+                    await run_user_analysis(session, self.executor,
+                                            int(task.target_id))
+                else:
+                    error = f"未知任务类型: {task.task_type}"
+            except Exception as e:
+                # 先 rollback 恢复 session 可用状态，再访问 task 属性（否则失败
+                # 的 flush 会使 task 处于过期状态，此时任何查询都会因
+                # PendingRollbackError 再次抛出，导致 rollback 永远执行不到）
+                session.rollback()
+                logger.exception("任务 %s 执行失败", task.id)
+                error = str(e)[:2000]
+            finish_task(session, task, error=error)
+            advance(session)
+            return True
+        finally:
+            session.close()
 
     async def _loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
-            worked = await self.run_once()
+            try:
+                worked = await self.run_once()
+            except Exception:
+                logger.exception("worker 循环出现未预期异常")
+                await asyncio.sleep(self.poll_interval)
+                continue
             if not worked:
                 await asyncio.sleep(self.poll_interval)
 
