@@ -28,11 +28,13 @@ class OpenAICompatProvider(LLMProvider):
             raise LLMError(f"LLM 请求失败: {e}") from e
         try:
             text = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as e:
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                usage = {}
+        except (KeyError, IndexError, TypeError, AttributeError) as e:
             raise LLMError(f"LLM 响应格式异常: {data}") from e
         if not text:
             raise LLMError("LLM 返回空内容")
-        usage = data.get("usage") or {}
         return LLMResponse(text=text,
                            prompt_tokens=usage.get("prompt_tokens", 0),
                            completion_tokens=usage.get("completion_tokens", 0))

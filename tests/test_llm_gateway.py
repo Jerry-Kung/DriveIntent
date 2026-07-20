@@ -94,3 +94,28 @@ async def test_openai_compat_provider_empty_content_raises_llm_error():
     with pytest.raises(LLMError):
         await provider.chat([{"role": "user", "content": "hi"}],
                             model="gpt", temperature=0.1)
+
+
+async def test_openai_compat_provider_non_dict_usage_defaults_to_zero():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "hello"}}],
+            "usage": "n/a",
+        })
+
+    provider = _provider_with_transport(handler)
+    resp = await provider.chat([{"role": "user", "content": "hi"}],
+                               model="gpt", temperature=0.1)
+    assert resp.text == "hello"
+    assert resp.prompt_tokens == 0
+    assert resp.completion_tokens == 0
+
+
+async def test_openai_compat_provider_choices_not_a_list_raises_llm_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": "not-a-list"})
+
+    provider = _provider_with_transport(handler)
+    with pytest.raises(LLMError):
+        await provider.chat([{"role": "user", "content": "hi"}],
+                            model="gpt", temperature=0.1)
