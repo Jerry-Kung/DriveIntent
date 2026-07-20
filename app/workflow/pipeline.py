@@ -2,10 +2,11 @@ import json
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Video
 from app.schemas.skills import VideoContextResult
 from app.services.results import save_result
-from app.skills.executor import SkillExecutor
+from app.skills.executor import SkillExecutor, load_skill_config
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
 COMMENT_SCREENING_SKILL = "comment_lead_screening"
@@ -36,7 +37,10 @@ async def run_video_context(session: Session, executor: SkillExecutor,
     }
     out: VideoContextResult = await executor.run(
         VIDEO_CONTEXT_SKILL, context, VideoContextResult)
+    config = load_skill_config(VIDEO_CONTEXT_SKILL)
     save_result(session, target_type="video", target_id=str(video_id),
                 skill_id=VIDEO_CONTEXT_SKILL,
                 skill_version=SKILL_VERSIONS[VIDEO_CONTEXT_SKILL],
-                result=out.model_dump())
+                result=out.model_dump(),
+                model_name=config.model_name or settings.llm_model,
+                prompt_version=config.prompt_version)
