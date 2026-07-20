@@ -30,13 +30,15 @@ def index(request: Request):
 
 @router.post("/api/import")
 async def api_import(file: UploadFile, db=Depends(get_db)):
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
+    tmp_path = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
         bundle = parse_excel(tmp_path)
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
     stats = import_bundle(db, bundle)
     return stats.model_dump()
 

@@ -27,6 +27,10 @@ async def lifespan(app: FastAPI):
     stop_event.set()
     if worker_task:
         worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="DriveIntent", lifespan=lifespan)
