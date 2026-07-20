@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>DriveIntent - 分析任务</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 2rem; }
+    section { margin-bottom: 2rem; }
+    table { border-collapse: collapse; }
+    td, th { border: 1px solid #ccc; padding: 4px 10px; }
+    button { padding: 4px 12px; }
+    #import-result, #start-result { color: #06c; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <h1>DriveIntent 线索获客</h1>
+  <p><a href="/leads">→ 线索列表</a></p>
+
+  <section>
+    <h2>1. 数据导入</h2>
+    <input type="file" id="file" accept=".xlsx">
+    <button onclick="doImport()">导入 Excel</button>
+    <span id="import-result"></span>
+  </section>
+
+  <section>
+    <h2>2. 启动分析</h2>
+    <button onclick="doStart()">启动分析</button>
+    <span id="start-result"></span>
+  </section>
+
+  <section>
+    <h2>3. 任务进度（每 3 秒刷新）</h2>
+    <div id="progress">加载中…</div>
+  </section>
+
+<script>
+async function doImport() {
+  const f = document.getElementById('file').files[0];
+  if (!f) { alert('请选择文件'); return; }
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await fetch('/api/import', {method: 'POST', body: fd});
+  const d = await r.json();
+  document.getElementById('import-result').textContent =
+    `视频新增 ${d.videos_new}，评论新增 ${d.comments_new}，` +
+    `跳过 ${d.comments_skipped}，空评论 ${d.empty_comments}`;
+}
+async function doStart() {
+  const r = await fetch('/api/analysis/start', {method: 'POST'});
+  const d = await r.json();
+  document.getElementById('start-result').textContent =
+    `新建任务 ${d.created} 个`;
+}
+async function refresh() {
+  const r = await fetch('/api/analysis/progress');
+  const d = await r.json();
+  let html = '<table><tr><th>任务类型</th><th>等待</th><th>执行中</th>' +
+             '<th>成功</th><th>失败</th></tr>';
+  for (const [t, s] of Object.entries(d)) {
+    html += `<tr><td>${t}</td><td>${s.pending||0}</td>` +
+            `<td>${s.running||0}</td><td>${s.success||0}</td>` +
+            `<td>${s.failed||0}</td></tr>`;
+  }
+  html += '</table>';
+  document.getElementById('progress').innerHTML = html;
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
