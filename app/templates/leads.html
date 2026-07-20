@@ -14,7 +14,7 @@
 <body>
   <h1>线索列表</h1>
   <p><a href="/">← 任务页</a>
-     <a href="/api/leads/export">导出 CSV</a></p>
+     <a href="/api/leads/export?grade={{ grade }}&brand={{ brand }}&model={{ model }}&review_status={{ review_status }}">导出 CSV</a></p>
   <form method="get">
     等级：
     <select name="grade">
@@ -23,6 +23,10 @@
       <option value="{{ g }}" {% if grade == g %}selected{% endif %}>{{ g }}</option>
       {% endfor %}
     </select>
+    品牌：
+    <input type="text" name="brand" value="{{ brand }}" placeholder="品牌">
+    车型：
+    <input type="text" name="model" value="{{ model }}" placeholder="车型">
     审核状态：
     <select name="review_status">
       <option value="">全部</option>

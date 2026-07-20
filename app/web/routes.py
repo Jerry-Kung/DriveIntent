@@ -82,8 +82,8 @@ def leads_page(request: Request, grade: str | None = None,
     rows = [lead_to_dict(db, l) for l in leads]
     return templates.TemplateResponse(
         request, "leads.html",
-        {"rows": rows, "grade": grade or "",
-         "review_status": review_status or ""})
+        {"rows": rows, "grade": grade or "", "brand": brand or "",
+         "model": model or "", "review_status": review_status or ""})
 
 
 @router.get("/leads/{lead_id}")
@@ -107,8 +107,12 @@ def api_leads(grade: str | None = None, brand: str | None = None,
 
 
 @router.get("/api/leads/export")
-def api_leads_export(grade: str | None = None, db=Depends(get_db)):
-    leads = query_leads(db, grade=grade)
+def api_leads_export(grade: str | None = None, brand: str | None = None,
+                     model: str | None = None,
+                     review_status: str | None = None, db=Depends(get_db)):
+    leads = query_leads(db, grade=grade or None, brand=brand or None,
+                        model=model or None,
+                        review_status=review_status or None)
     csv_text = "﻿" + leads_to_csv(db, leads)
     return Response(csv_text, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition":
