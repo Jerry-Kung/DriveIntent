@@ -13,7 +13,7 @@ from app.models import Lead
 from app.services.aggregation import build_user_evidence
 from app.services.leads import lead_to_dict, leads_to_csv, query_leads
 from app.workflow.pipeline import advance, schedule_analysis
-from app.workflow.tasks import retry_task, task_counts
+from app.workflow.tasks import list_failed_tasks, retry_task, task_counts
 
 router = APIRouter()
 templates = Jinja2Templates(
@@ -38,9 +38,11 @@ async def api_import(file: UploadFile, db=Depends(get_db)):
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp.write(await file.read())
             tmp_path = tmp.name
+            tmp.write(await file.read())
         bundle = parse_excel(tmp_path)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
@@ -58,6 +60,11 @@ def api_start(db=Depends(get_db)):
 @router.get("/api/analysis/progress")
 def api_progress(db=Depends(get_db)):
     return task_counts(db)
+
+
+@router.get("/api/tasks/failed")
+def api_failed_tasks(db=Depends(get_db)):
+    return list_failed_tasks(db)
 
 
 @router.post("/api/tasks/{task_id}/retry")

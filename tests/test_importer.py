@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
 from app.importer.core import import_bundle
 from app.importer.excel import parse_excel
@@ -61,4 +62,13 @@ def test_parse_excel(tmp_path):
     c = bundle.comments[0]
     assert c.external_id == "9001" and c.video_external_id == "1001"
     assert c.comment_time is not None
+
+
+def test_parse_excel_missing_columns_raises(tmp_path):
+    df = pd.DataFrame([{"aweme_id": "1001", "title": "标题A"}])  # 缺少必需列
+    path = tmp_path / "bad.xlsx"
+    df.to_excel(path, index=False)
+
+    with pytest.raises(ValueError, match="缺少必需列"):
+        parse_excel(path)
 

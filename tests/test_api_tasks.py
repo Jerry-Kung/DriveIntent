@@ -48,6 +48,43 @@ def test_retry_endpoint_404_on_missing(session):
     assert client.post("/api/tasks/999/retry").status_code == 404
 
 
+def test_import_missing_columns_returns_400(tmp_path, session):
+    df = pd.DataFrame([{"aweme_id": "1001", "title": "标题A"}])
+    path = tmp_path / "bad.xlsx"
+    df.to_excel(path, index=False)
+    client = _client(session)
+    with open(path, "rb") as f:
+        r = client.post("/api/import", files={"file": ("bad.xlsx", f)})
+    assert r.status_code == 400
+    assert "缺少必需列" in r.json()["detail"]
+
+
+def test_failed_tasks_list_and_retry(session):
+    task = AnalysisTask(task_type="video_context_analysis",
+                        target_type="video", target_id="1",
+                        skill_version="1.0", status="failed",
+                        error="模拟失败原因" * 50, attempt_count=3)
+    session.add(task); session.commit()
+    client = _client(session)
+
+    r = client.get("/api/tasks/failed")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["id"] == task.id
+    assert data[0]["task_type"] == "video_context_analysis"
+    assert data[0]["target_id"] == "1"
+    assert data[0]["attempt_count"] == 3
+    assert len(data[0]["error"]) <= 200
+
+    r = client.post(f"/api/tasks/{task.id}/retry")
+    assert r.status_code == 200
+    session.refresh(task)
+    assert task.status == "pending"
+
+    assert client.get("/api/tasks/failed").json() == []
+
+
 def test_index_page(session):
     client = _client(session)
     r = client.get("/")

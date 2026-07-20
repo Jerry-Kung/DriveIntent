@@ -5,6 +5,9 @@ import pandas as pd
 
 from app.schemas.import_data import CommentIn, ImportBundle, UserIn, VideoIn
 
+REQUIRED_COLUMNS = {"aweme_id", "title", "desc", "cover_url", "nickname",
+                    "sec_uid", "comment_id", "content", "create_time"}
+
 
 def _clean(value):
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -16,6 +19,9 @@ def parse_excel(path: str | Path) -> ImportBundle:
     df = pd.read_excel(path, sheet_name=0,
                        dtype={"aweme_id": str, "comment_id": str,
                               "sec_uid": str})
+    missing = REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"缺少必需列: {', '.join(sorted(missing))}")
     videos: dict[str, VideoIn] = {}
     users: dict[str, UserIn] = {}
     comments: list[CommentIn] = []
