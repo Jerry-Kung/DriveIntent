@@ -55,3 +55,59 @@ def test_build_user_evidence(session):
     assert ev["statistics"]["valid_comment_count"] == 1
     assert ev["statistics"]["high_intent_comment_count"] == 1
     assert ev["statistics"]["related_brands"] == ["坦克"]
+
+
+def test_valid_screenings_latest_true_wins(session):
+    """Test that when multiple results exist for same comment, latest wins.
+    First result: not purchase-related, Second: purchase-related → user included."""
+    v = Video(platform="douyin", external_id="v1", title="t")
+    u = PlatformUser(platform="douyin", external_id="u1", nickname="user")
+    session.add_all([v, u]); session.flush()
+
+    c = Comment(platform="douyin", external_id="c1", video_id=v.id,
+                user_id=u.id, content="test")
+    session.add(c); session.flush()
+
+    sv = SKILL_VERSIONS[COMMENT_SCREENING_SKILL]
+
+    # First result: not purchase-related
+    save_result(session, target_type="comment", target_id=str(c.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening(c.id, purchase=False))
+
+    # Second result: purchase-related (latest should win)
+    save_result(session, target_type="comment", target_id=str(c.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening(c.id, purchase=True))
+
+    # Since latest (purchase=True) wins, user should be in candidate list
+    ids = candidate_user_ids(session)
+    assert ids == [u.id]
+
+
+def test_valid_screenings_latest_false_wins(session):
+    """Test that when multiple results exist for same comment, latest wins.
+    First result: purchase-related, Second: not purchase-related → user excluded."""
+    v = Video(platform="douyin", external_id="v1", title="t")
+    u = PlatformUser(platform="douyin", external_id="u1", nickname="user")
+    session.add_all([v, u]); session.flush()
+
+    c = Comment(platform="douyin", external_id="c1", video_id=v.id,
+                user_id=u.id, content="test")
+    session.add(c); session.flush()
+
+    sv = SKILL_VERSIONS[COMMENT_SCREENING_SKILL]
+
+    # First result: purchase-related
+    save_result(session, target_type="comment", target_id=str(c.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening(c.id, purchase=True))
+
+    # Second result: not purchase-related (latest should win)
+    save_result(session, target_type="comment", target_id=str(c.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening(c.id, purchase=False))
+
+    # Since latest (purchase=False) wins, user should NOT be in candidate list
+    ids = candidate_user_ids(session)
+    assert ids == []
