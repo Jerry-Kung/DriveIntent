@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>DriveIntent - 线索列表</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ccc; padding: 4px 8px; font-size: 14px; }
+    .grade-H { color: #c00; font-weight: bold; }
+    .grade-A { color: #e60; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>线索列表</h1>
+  <p><a href="/">← 任务页</a>
+     <a href="/api/leads/export">导出 CSV</a></p>
+  <form method="get">
+    等级：
+    <select name="grade">
+      <option value="">全部</option>
+      {% for g in ["H", "A", "B", "C"] %}
+      <option value="{{ g }}" {% if grade == g %}selected{% endif %}>{{ g }}</option>
+      {% endfor %}
+    </select>
+    审核状态：
+    <select name="review_status">
+      <option value="">全部</option>
+      <option value="unreviewed" {% if review_status == "unreviewed" %}selected{% endif %}>未审核</option>
+      <option value="valid" {% if review_status == "valid" %}selected{% endif %}>有效</option>
+      <option value="invalid" {% if review_status == "invalid" %}selected{% endif %}>无效</option>
+    </select>
+    <button type="submit">筛选</button>
+  </form>
+  <table>
+    <tr><th>昵称</th><th>等级</th><th>品牌/车型</th><th>摘要</th>
+        <th>核心需求</th><th>主要顾虑</th><th>置信度</th>
+        <th>审核状态</th><th>详情</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.nickname }}</td>
+      <td class="grade-{{ r.grade }}">{{ r.grade }}</td>
+      <td>{{ r.target_brands | join("/") }} {{ r.target_models | join("/") }}</td>
+      <td>{{ r.summary }}</td>
+      <td>{{ r.core_needs | join("、") }}</td>
+      <td>{{ r.main_concerns | join("、") }}</td>
+      <td>{{ "%.2f" | format(r.confidence or 0) }}</td>
+      <td>{{ r.review_status }}</td>
+      <td><a href="/leads/{{ r.id }}">查看</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

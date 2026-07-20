@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>DriveIntent - 线索详情</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 2rem; }
+    .card { border: 1px solid #ccc; padding: 12px; margin-bottom: 16px; }
+    .comment { border-left: 3px solid #06c; padding-left: 8px;
+               margin: 8px 0; }
+    .meta { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <p><a href="/leads">← 返回列表</a></p>
+  <h1>{{ lead.nickname }}
+      <span class="grade-{{ lead.grade }}">[{{ lead.grade }}级]</span></h1>
+
+  <div class="card">
+    <h3>意向画像</h3>
+    <p>{{ lead.summary }}</p>
+    <p>购车阶段：{{ lead.purchase_stage or "未知" }}｜
+       购车时间：{{ lead.purchase_time or "未知" }}｜
+       置信度：{{ "%.2f" | format(lead.confidence or 0) }}</p>
+    <p>品牌车型：{{ lead.target_brands | join("/") }}
+       {{ lead.target_models | join("/") }}</p>
+    <p>核心需求：{{ lead.core_needs | join("、") }}｜
+       主要顾虑：{{ lead.main_concerns | join("、") }}</p>
+    <p>使用场景：{{ lead.usage_scenario or "未知" }}</p>
+    <p><b>销售切入点：</b>{{ lead.entry_point or "-" }}</p>
+    <p><b>待确认问题：</b>{{ lead.verification_questions | join("；") }}</p>
+  </div>
+
+  <div class="card">
+    <h3>证据评论（{{ pack.comments | length }} 条有效）</h3>
+    {% for c in pack.comments %}
+    <div class="comment">
+      <div>{{ c.content }}</div>
+      <div class="meta">
+        {{ c.comment_time or "" }}｜意向强度 {{ c.screening.intent_strength }}｜
+        {{ c.screening.reason }}
+        {% if c.video_context %}
+        ｜视频：{{ c.video_context.brand or "" }} {{ c.video_context.model or "" }}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h3>人工审核</h3>
+    <p>当前：{{ lead.review_status }}
+       {{ lead.review_tags | join("、") }} {{ lead.review_note or "" }}</p>
+    <select id="rs">
+      <option value="valid">有效</option>
+      <option value="invalid">无效</option>
+    </select>
+    <label><input type="checkbox" class="tag" value="等级偏高">等级偏高</label>
+    <label><input type="checkbox" class="tag" value="等级偏低">等级偏低</label>
+    <label><input type="checkbox" class="tag" value="疑似水军">疑似水军</label>
+    <label><input type="checkbox" class="tag" value="无真实购车需求">无真实购车需求</label>
+    <label><input type="checkbox" class="tag" value="画像错误">画像错误</label>
+    <label><input type="checkbox" class="tag" value="切入点无价值">切入点无价值</label>
+    <br><textarea id="note" rows="2" cols="60"
+                  placeholder="备注"></textarea><br>
+    <button onclick="submitReview()">提交审核</button>
+    <span id="review-result"></span>
+  </div>
+
+<script>
+async function submitReview() {
+  const tags = [...document.querySelectorAll('.tag:checked')]
+      .map(x => x.value);
+  const r = await fetch('/api/leads/{{ lead.id }}/review', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      review_status: document.getElementById('rs').value,
+      review_tags: tags,
+      review_note: document.getElementById('note').value})});
+  document.getElementById('review-result').textContent =
+      r.ok ? '已保存' : '保存失败';
+}
+</script>
+</body>
+</html>
