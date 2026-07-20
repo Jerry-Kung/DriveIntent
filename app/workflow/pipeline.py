@@ -140,7 +140,7 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
         content_map = {c["comment_id"]: c["content"]
                        for c in evidence["comments"]}
         evidence_comments = [
-            {"comment_id": cid, "content": content_map.get(cid, "")}
-            for cid in out.evidence_comment_ids]
+            {"comment_id": cid, "content": content_map[cid]}
+            for cid in out.evidence_comment_ids if cid in content_map]
         upsert_lead(session, user_id, out, evidence_comments,
                     SKILL_VERSIONS[USER_ANALYSIS_SKILL])

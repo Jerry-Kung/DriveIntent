@@ -51,3 +51,33 @@ async def test_run_user_analysis_upsert(session):
 
     lead = session.query(Lead).one()          # 仍是一条
     assert lead.grade == "A"                  # 已更新
+
+
+async def test_run_user_analysis_filters_hallucinated_evidence_ids(session):
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    payload = json.loads(LEAD_JSON)
+    payload["evidence_comment_ids"] = [str(c1.id), "999999"]
+    provider.queue(json.dumps(payload, ensure_ascii=False))
+    executor = SkillExecutor(LLMGateway(provider))
+
+    await run_user_analysis(session, executor, u1.id)
+
+    lead = session.query(Lead).one()
+    assert lead.evidence == [{"comment_id": str(c1.id),
+                              "content": "落地多少钱"}]
+
+
+async def test_run_user_analysis_invalid_lead_creates_no_lead(session):
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    payload = json.loads(LEAD_JSON)
+    payload["lead_grade"] = "C"
+    payload["is_valid_lead"] = False
+    payload["evidence_comment_ids"] = [str(c1.id)]
+    provider.queue(json.dumps(payload, ensure_ascii=False))
+    executor = SkillExecutor(LLMGateway(provider))
+
+    await run_user_analysis(session, executor, u1.id)
+
+    assert session.query(Lead).count() == 0
