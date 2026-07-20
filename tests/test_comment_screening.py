@@ -76,3 +76,35 @@ async def test_screen_batch_splits_on_id_mismatch(session):
             session, target_type="comment", target_id=str(cid),
             skill_id=COMMENT_SCREENING_SKILL,
             skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL]) is not None
+
+
+async def test_screen_batch_splits_on_duplicate_items(session):
+    v, comments = _setup(session, n_comments=2)
+    ids = [c.id for c in comments]
+    provider = MockProvider()
+    # 集合正确但条数错误（重复 item）：3 次重试全失败 → 拆成两个单条批次
+    dup = json.dumps(
+        {"items": [_item(ids[0]), _item(ids[0]), _item(ids[1])]})
+    provider.queue(dup, dup, dup,
+                   json.dumps({"items": [_item(ids[0])]}),
+                   json.dumps({"items": [_item(ids[1])]}))
+    executor = SkillExecutor(LLMGateway(provider), max_retries=3)
+
+    await screen_comment_batch(session, executor, v.id, ids)
+
+    for cid in ids:
+        assert get_current_result(
+            session, target_type="comment", target_id=str(cid),
+            skill_id=COMMENT_SCREENING_SKILL,
+            skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL]) is not None
+
+
+async def test_screen_batch_nonexistent_ids_returns_without_calling_llm(session):
+    v, comments = _setup(session, n_comments=2)
+    provider = MockProvider()
+    provider.queue("sentinel-should-not-be-consumed")
+    executor = SkillExecutor(LLMGateway(provider))
+
+    await screen_comment_batch(session, executor, v.id, [999999])
+
+    assert provider._responses == ["sentinel-should-not-be-consumed"]

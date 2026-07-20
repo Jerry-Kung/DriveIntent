@@ -47,7 +47,7 @@ async def run_video_context(session: Session, executor: SkillExecutor,
                 prompt_version=config.prompt_version)
 
 
-async def _call_screening(session: Session, executor: SkillExecutor,
+async def _call_screening(executor: SkillExecutor,
                           video_context: dict,
                           comments: list[Comment]) -> CommentScreeningResult:
     context = {
@@ -85,18 +85,21 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
         raise SkillExecutionError(f"视频 {video_id} 缺少语境结果")
     comments = (session.query(Comment)
                 .filter(Comment.id.in_(comment_ids)).all())
+    if not comments:
+        return
+    resolved_ids = [c.id for c in comments]
     expected = {str(c.id) for c in comments}
 
     for _ in range(settings.llm_max_retries):
-        result = await _call_screening(session, executor,
-                                       ctx_row.result, comments)
-        if {i.comment_id for i in result.items} == expected:
+        result = await _call_screening(executor, ctx_row.result, comments)
+        if (len(result.items) == len(comments)
+                and {i.comment_id for i in result.items} == expected):
             _save_screening_items(session, result)
             return
     # 多次整批失败：拆半递归；单条仍失败则抛错
-    if len(comments) == 1:
+    if len(resolved_ids) == 1:
         raise SkillExecutionError(
             f"评论 {comment_ids} 筛选输出 ID 持续不一致")
-    mid = len(comment_ids) // 2
-    await screen_comment_batch(session, executor, video_id, comment_ids[:mid])
-    await screen_comment_batch(session, executor, video_id, comment_ids[mid:])
+    mid = len(resolved_ids) // 2
+    await screen_comment_batch(session, executor, video_id, resolved_ids[:mid])
+    await screen_comment_batch(session, executor, video_id, resolved_ids[mid:])
