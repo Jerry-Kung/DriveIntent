@@ -68,6 +68,10 @@ class SkillExecutor:
         config = load_skill_config(skill_id)
         prompt = render_prompt(config, context)
         messages = [{"role": "user", "content": prompt}]
+        # gateway.chat 内部已重试 max_retries 次；若仍失败说明 LLM/网络持续
+        # 不可用，执行器层不再重试，避免 3(执行器)×3(网关) 次调用的放大。
+        # 执行器层的重试只针对解析(ValueError)/校验(ValidationError)失败——
+        # 这类失败换一次全新的 LLM 输出才有意义。
         last_error: Exception | None = None
         for _ in range(self.max_retries):
             try:
@@ -78,8 +82,8 @@ class SkillExecutor:
                     model=config.model_name or None,
                     temperature=config.temperature)
             except LLMError as e:
-                last_error = e
-                continue
+                raise SkillExecutionError(
+                    f"Skill {skill_id} 执行失败: {e}") from e
             try:
                 data = extract_json(resp.text)
                 return output_model.model_validate(data)

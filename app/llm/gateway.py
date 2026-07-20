@@ -21,17 +21,17 @@ class LLMGateway:
         if self.session_factory is None:
             return
         try:
-            s = self.session_factory()
-            s.add(LlmCallLog(
-                skill_id=skill_id, skill_version=skill_version,
-                prompt_version=prompt_version, model_name=model,
-                input_digest=str(messages)[-2000:],
-                output_text=resp.text[:8000] if resp else None,
-                prompt_tokens=resp.prompt_tokens if resp else 0,
-                completion_tokens=resp.completion_tokens if resp else 0,
-                duration_ms=duration_ms, error=error,
-                retry_count=retry_count))
-            s.commit()
+            with self.session_factory() as s:
+                s.add(LlmCallLog(
+                    skill_id=skill_id, skill_version=skill_version,
+                    prompt_version=prompt_version, model_name=model,
+                    input_digest=str(messages)[-2000:],
+                    output_text=resp.text[:8000] if resp else None,
+                    prompt_tokens=resp.prompt_tokens if resp else 0,
+                    completion_tokens=resp.completion_tokens if resp else 0,
+                    duration_ms=duration_ms, error=error,
+                    retry_count=retry_count))
+                s.commit()
         except Exception:
             pass  # 日志失败不影响主流程
 

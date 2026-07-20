@@ -24,7 +24,8 @@ def create_task(session: Session, *, task_type: str, target_type: str,
 def claim_next(session: Session) -> AnalysisTask | None:
     task = (session.query(AnalysisTask)
             .filter_by(status="pending")
-            .order_by(AnalysisTask.id).first())
+            .order_by(AnalysisTask.attempt_count.asc(),
+                     AnalysisTask.id.asc()).first())
     if task is None:
         return None
     task.status = "running"
@@ -74,3 +75,12 @@ def task_counts(session: Session) -> dict:
     for task_type, status, count in rows:
         out.setdefault(task_type, {})[status] = count
     return out
+
+
+def list_failed_tasks(session: Session) -> list[dict]:
+    tasks = (session.query(AnalysisTask)
+            .filter_by(status="failed")
+            .order_by(AnalysisTask.id).all())
+    return [{"id": t.id, "task_type": t.task_type, "target_id": t.target_id,
+            "error": (t.error or "")[:200], "attempt_count": t.attempt_count}
+           for t in tasks]

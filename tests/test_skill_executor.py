@@ -1,6 +1,7 @@
 import pytest
 from pydantic import BaseModel
 
+from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.skills.executor import (SkillConfig, SkillExecutionError,
@@ -64,3 +65,32 @@ async def test_executor_fails_after_retries(tmp_path, monkeypatch):
     executor = SkillExecutor(LLMGateway(provider), max_retries=3)
     with pytest.raises(SkillExecutionError):
         await executor.run("demo", {"q": "hi"}, Out)
+
+
+async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
+    # gateway.chat 内部已重试过；执行器层遇到 LLMError 应立即失败，不再自行
+    # 重试（避免 3(执行器) × 3(网关) = 9 次放大调用）。
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"; prompt_dir = tmp_path / "prompts"
+    cfg_dir.mkdir(); prompt_dir.mkdir()
+    (cfg_dir / "demo.yaml").write_text(
+        'skill_id: demo\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\nprompt_file: demo_v1.txt\n'
+        'prompt_version: "v1"\n', encoding="utf-8")
+    (prompt_dir / "demo_v1.txt").write_text("$q", encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(ex, "PROMPT_DIR", prompt_dir)
+
+    calls = {"n": 0}
+
+    class AlwaysFailProvider(MockProvider):
+        async def chat(self, messages, *, model, temperature):
+            calls["n"] += 1
+            raise LLMError("boom")
+
+    gateway = LLMGateway(AlwaysFailProvider(), max_retries=3)
+    executor = SkillExecutor(gateway, max_retries=3)
+    with pytest.raises(SkillExecutionError):
+        await executor.run("demo", {"q": "hi"}, Out)
+    # gateway 自身重试 3 次（max_retries=3），执行器层不应再叠加重试
+    assert calls["n"] == 3

@@ -49,6 +49,9 @@ class Worker:
                 error = str(e)[:2000]
             finish_task(session, task, error=error)
             advance(session)
+            if error is not None:
+                # 持久失败时节流，避免对故障中的 LLM/DB 热循环重试
+                await asyncio.sleep(self.poll_interval)
             return True
         finally:
             session.close()
