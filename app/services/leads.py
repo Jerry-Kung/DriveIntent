@@ -74,6 +74,13 @@ def lead_to_dict(session: Session, lead: Lead) -> dict:
     }
 
 
+def _csv_safe(value):
+    """防止 Excel/表格软件将以 =、+、-、@ 开头的单元格当公式执行。"""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
 def leads_to_csv(session: Session, leads: list[Lead]) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -83,10 +90,13 @@ def leads_to_csv(session: Session, leads: list[Lead]) -> str:
     for lead in leads:
         d = lead_to_dict(session, lead)
         writer.writerow([
-            d["nickname"], d["platform"], d["grade"],
-            "/".join(d["target_brands"]), "/".join(d["target_models"]),
-            d["summary"], "/".join(d["core_needs"]),
-            "/".join(d["main_concerns"]), d["purchase_time"] or "",
-            d["entry_point"] or "", d["confidence"],
-            d["review_status"], d["created_at"]])
+            _csv_safe(d["nickname"]), _csv_safe(d["platform"]),
+            _csv_safe(d["grade"]),
+            _csv_safe("/".join(d["target_brands"])),
+            _csv_safe("/".join(d["target_models"])),
+            _csv_safe(d["summary"]), _csv_safe("/".join(d["core_needs"])),
+            _csv_safe("/".join(d["main_concerns"])),
+            _csv_safe(d["purchase_time"] or ""),
+            _csv_safe(d["entry_point"] or ""), d["confidence"],
+            _csv_safe(d["review_status"]), d["created_at"]])
     return buf.getvalue()

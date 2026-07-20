@@ -143,8 +143,11 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
         evidence_comments = [
             {"comment_id": cid, "content": content_map[cid]}
             for cid in out.evidence_comment_ids if cid in content_map]
-        upsert_lead(session, user_id, out, evidence_comments,
-                    SKILL_VERSIONS[USER_ANALYSIS_SKILL])
+        # 若所有 evidence_comment_ids 均为幻觉（过滤后为空），该线索没有任何
+        # 可验证证据支撑，不应作为有效线索入库（AnalysisResult 仍已保存）。
+        if evidence_comments:
+            upsert_lead(session, user_id, out, evidence_comments,
+                        SKILL_VERSIONS[USER_ANALYSIS_SKILL])
 
 
 def schedule_analysis(session: Session) -> int:
@@ -186,26 +189,41 @@ def advance(session: Session) -> int:
                            status="success").all())
     for ctx in ctx_rows:
         video_id = int(ctx.target_id)
-        has_batch = (session.query(AnalysisTask)
-                     .filter(AnalysisTask.task_type == COMMENT_SCREENING_SKILL,
-                             AnalysisTask.target_id.like(f"{video_id}:%"))
-                     .first())
-        if has_batch:
-            continue
+        existing_batches = (session.query(AnalysisTask)
+                            .filter(AnalysisTask.task_type ==
+                                    COMMENT_SCREENING_SKILL,
+                                    AnalysisTask.target_id.like(
+                                        f"{video_id}:%"))
+                            .all())
+        covered_ids: set[int] = set()
+        max_idx = -1
+        for t in existing_batches:
+            if t.payload and t.payload.get("comment_ids"):
+                covered_ids.update(t.payload["comment_ids"])
+            try:
+                idx = int(t.target_id.split(":", 1)[1])
+            except (ValueError, IndexError):
+                continue
+            max_idx = max(max_idx, idx)
         comment_ids = [cid for (cid,) in
                        session.query(Comment.id)
                        .filter(Comment.video_id == video_id)
                        .order_by(Comment.id).all()]
+        # 只为尚未被任何批次任务覆盖的评论（含新导入评论）建批次，
+        # 批次序号在已有最大序号之后延续，保持已存在批次的幂等性。
+        uncovered_ids = [cid for cid in comment_ids if cid not in covered_ids]
         size = settings.comment_batch_size
-        for idx in range(0, len(comment_ids), size):
-            batch = comment_ids[idx:idx + size]
+        next_idx = max_idx + 1
+        for i in range(0, len(uncovered_ids), size):
+            batch = uncovered_ids[i:i + size]
             if create_task(
                     session, task_type=COMMENT_SCREENING_SKILL,
                     target_type="comment_batch",
-                    target_id=f"{video_id}:{idx // size}",
+                    target_id=f"{video_id}:{next_idx}",
                     skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL],
                     payload={"video_id": video_id, "comment_ids": batch}):
                 created += 1
+            next_idx += 1
 
     # 2) 语境+筛选全部完结 → 为候选用户建用户分析任务
     if _upstream_done(session):

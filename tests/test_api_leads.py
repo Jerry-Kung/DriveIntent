@@ -93,6 +93,16 @@ def test_export_csv_filtered(session):
     assert "乙" not in r.text
 
 
+def test_export_csv_escapes_formula_injection(session):
+    _mk_lead(session, "H", "=cmd|'/c calc'!A1")
+    client = _client(session)
+    r = client.get("/api/leads/export")
+    assert r.status_code == 200
+    # 危险前缀被转义为文本，不会被 Excel 当公式执行
+    assert "'=cmd|'/c calc'!A1" in r.text
+    assert "\n=cmd" not in r.text and ",=cmd" not in r.text
+
+
 def test_lead_detail_shows_evidence(session):
     v, u1, u2, c1, c2 = _setup(session)
     lead = Lead(user_id=u1.id, grade="H", summary="意向摘要",

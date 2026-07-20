@@ -81,3 +81,22 @@ async def test_run_user_analysis_invalid_lead_creates_no_lead(session):
     await run_user_analysis(session, executor, u1.id)
 
     assert session.query(Lead).count() == 0
+
+
+async def test_run_user_analysis_valid_lead_all_evidence_hallucinated_creates_no_lead(
+        session):
+    from app.models import AnalysisResult
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    payload = json.loads(LEAD_JSON)
+    payload["is_valid_lead"] = True
+    payload["evidence_comment_ids"] = ["888888", "999999"]  # 全部幻觉 ID
+    provider.queue(json.dumps(payload, ensure_ascii=False))
+    executor = SkillExecutor(LLMGateway(provider))
+
+    await run_user_analysis(session, executor, u1.id)
+
+    assert session.query(Lead).count() == 0
+    # AnalysisResult 仍应保存
+    assert session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).count() == 1

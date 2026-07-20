@@ -109,3 +109,50 @@ async def test_loop_survives_unexpected_exception():
 
     await asyncio.gather(worker._loop(stop_event), stopper())
     assert calls["n"] >= 2
+
+
+async def test_advance_creates_batch_for_newly_imported_comments_on_screened_video(
+        session):
+    from app.services.results import save_result
+
+    v = Video(platform="douyin", external_id="v1", title="t")
+    u = PlatformUser(platform="douyin", external_id="u1", nickname="用户")
+    session.add_all([v, u]); session.flush()
+    c1 = Comment(platform="douyin", external_id="c1", video_id=v.id,
+                user_id=u.id, content="评论1")
+    c2 = Comment(platform="douyin", external_id="c2", video_id=v.id,
+                user_id=u.id, content="评论2")
+    session.add_all([c1, c2]); session.commit()
+
+    save_result(session, target_type="video", target_id=str(v.id),
+               skill_id=VIDEO_CONTEXT_SKILL,
+               skill_version=SKILL_VERSIONS[VIDEO_CONTEXT_SKILL],
+               result={"brand": "坦克", "model": "坦克300"})
+
+    assert advance(session) == 1     # 首次建批：覆盖 c1、c2
+    batches = (session.query(AnalysisTask)
+              .filter(AnalysisTask.task_type == "comment_lead_screening")
+              .all())
+    assert len(batches) == 1
+    assert set(batches[0].payload["comment_ids"]) == {c1.id, c2.id}
+
+    # 该视频已“筛选”（已建批）后，再导入 2 条新评论
+    c3 = Comment(platform="douyin", external_id="c3", video_id=v.id,
+                user_id=u.id, content="评论3")
+    c4 = Comment(platform="douyin", external_id="c4", video_id=v.id,
+                user_id=u.id, content="评论4")
+    session.add_all([c3, c4]); session.commit()
+
+    created = advance(session)
+    assert created == 1
+
+    batches = (session.query(AnalysisTask)
+              .filter(AnalysisTask.task_type == "comment_lead_screening")
+              .order_by(AnalysisTask.id).all())
+    assert len(batches) == 2
+    new_batch = batches[-1]
+    assert set(new_batch.payload["comment_ids"]) == {c3.id, c4.id}
+    assert new_batch.target_id == f"{v.id}:1"
+
+    # 再跑一次 advance() 应保持幂等，不再新建
+    assert advance(session) == 0
