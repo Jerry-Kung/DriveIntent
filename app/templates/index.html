@@ -80,6 +80,11 @@ async function retryTask(id) {
   refreshFailed();
   refresh();
 }
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 async function refreshFailed() {
   const r = await fetch('/api/tasks/failed');
   const list = await r.json();
@@ -90,9 +95,9 @@ async function refreshFailed() {
   let html = '<table><tr><th>ID</th><th>类型</th><th>对象</th>' +
              '<th>错误</th><th>操作</th></tr>';
   for (const t of list) {
-    html += `<tr><td>${t.id}</td><td>${t.task_type}</td>` +
-            `<td>${t.target_id}</td><td>${t.error || ''}</td>` +
-            `<td><button onclick="retryTask(${t.id})">重试</button></td></tr>`;
+    html += `<tr><td>${esc(t.id)}</td><td>${esc(t.task_type)}</td>` +
+            `<td>${esc(t.target_id)}</td><td>${esc(t.error || '')}</td>` +
+            `<td><button onclick="retryTask(${esc(t.id)})">重试</button></td></tr>`;
   }
   html += '</table>';
   document.getElementById('failed-tasks').innerHTML = html;
