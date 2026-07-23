@@ -1,3 +1,4 @@
+import json
 import logging
 import tempfile
 import time
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from app.db import SessionLocal
 from app.importer.core import import_bundle
 from app.importer.excel import parse_excel
+from app.importer.json_source import parse_json_source
 from app.models import Lead, Video
 from app.services.aggregation import build_user_evidence
 from app.services.leads import (lead_to_dict, leads_to_csv, leads_to_dicts,
@@ -46,11 +48,16 @@ def index(request: Request):
 def api_import(file: UploadFile, db=Depends(get_db)):
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp_path = tmp.name
-            tmp.write(file.file.read())
-        bundle = parse_excel(tmp_path)
-    except ValueError as e:
+        raw_bytes = file.file.read()
+        if (file.filename or "").endswith(".json"):
+            bundle = parse_json_source(json.loads(raw_bytes.decode("utf-8")))
+        else:
+            with tempfile.NamedTemporaryFile(suffix=".xlsx",
+                                             delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(raw_bytes)
+            bundle = parse_excel(tmp_path)
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
         raise HTTPException(400, str(e))
     finally:
         if tmp_path:
