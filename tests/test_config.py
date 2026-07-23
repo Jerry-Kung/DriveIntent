@@ -14,19 +14,20 @@ def test_defaults():
     assert s.worker_concurrency == 3
 
 
-def test_api_keys_list_parsing(monkeypatch):
+def test_api_keys_list_parsing():
     from app.config import Settings
     s = Settings(api_keys="k1, k2 ,k3")
     assert s.api_keys_list == ["k1", "k2", "k3"]
+
 
 def test_api_keys_list_empty():
     from app.config import Settings
     s = Settings(api_keys="")
     assert s.api_keys_list == []
 
+
 def test_api_worker_defaults():
     from app.config import Settings
     s = Settings()
     assert s.api_worker_enabled is True
     assert s.api_worker_concurrency == 3
-    assert s.image_fetch_timeout_seconds == 30

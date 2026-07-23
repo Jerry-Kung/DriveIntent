@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     api_keys: str = ""
     api_worker_enabled: bool = True
     api_worker_concurrency: int = 3
-    image_fetch_timeout_seconds: int = 30
 
     @property
     def api_keys_list(self) -> list[str]:
