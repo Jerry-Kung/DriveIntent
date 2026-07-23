@@ -53,7 +53,8 @@ async def run_comment_screening(executor: SkillExecutor,
         groups.setdefault(c.video_title, []).append(c)
 
     size = settings.comment_batch_size
-    scored: dict[str, CommentScreeningItem] = {}
+    items: dict[str, CommentScreeningItem] = {}
+    errors: dict[str, str] = {}
     for title, comments in groups.items():
         if title not in ctx_cache:
             ctx_cache[title] = await _video_context(executor, comments[0])
@@ -61,13 +62,13 @@ async def run_comment_screening(executor: SkillExecutor,
         for i in range(0, len(comments), size):
             batch = comments[i:i + size]
             try:
-                items = await _screen_batch(executor, ctx, batch)
+                batch_items = await _screen_batch(executor, ctx, batch)
             except Exception as e:
+                err = str(e)[:500]
                 for c in batch:
-                    scored[c.comment_id] = None  # 标记失败
-                    scored[f"__err__{c.comment_id}"] = str(e)[:500]
+                    errors[c.comment_id] = err
                 continue
-            scored.update(items)
+            items.update(batch_items)
             done += len(batch)
             if progress_cb:
                 progress_cb(done)
@@ -75,11 +76,11 @@ async def run_comment_screening(executor: SkillExecutor,
     # 按输入顺序回填，保证一一对应
     ts = now_iso()
     for c in request.comments:
-        item = scored.get(c.comment_id)
-        if isinstance(item, CommentScreeningItem):
+        item = items.get(c.comment_id)
+        if item is not None:
             results.append(map_screening_item(item, ts).model_dump())
         else:
-            err = scored.get(f"__err__{c.comment_id}", "筛选失败")
+            err = errors.get(c.comment_id, "筛选失败")
             results.append({"comment_id": c.comment_id, "passed": False,
                             "filter_reason": None, "analysis": "",
                             "processed_at": ts, "error": err})
