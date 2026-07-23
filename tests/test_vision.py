@@ -17,3 +17,17 @@ def test_base64_screenshot_wrapped():
 def test_empty_screenshot_text_only():
     msgs = build_image_message("只有文字", "")
     assert msgs[0]["content"] == "只有文字"
+
+
+import pytest
+from app.llm.mock import MockProvider
+
+
+@pytest.mark.asyncio
+async def test_mock_handles_image_content():
+    p = MockProvider()
+    p.queue("这是一张科技博主主页")
+    from app.skills.vision import build_image_message
+    msgs = build_image_message("描述", "https://cdn/x.png")
+    resp = await p.chat(msgs, model="m", temperature=0.1)
+    assert resp.text == "这是一张科技博主主页"

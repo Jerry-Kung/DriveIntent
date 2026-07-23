@@ -1,0 +1,10 @@
+skill_id: image_recognition
+version: "1.0"
+description: >
+  识别抖音/TikTok 账号主页截图中的所有可见信息，
+  输出结构化文字描述，供用户画像分析参考。
+model:
+  name: ""
+  temperature: 0.1
+prompt_file: image_recognition_v1.txt
+prompt_version: "v1"
