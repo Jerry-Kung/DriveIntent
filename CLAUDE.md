@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **项目名**：DriveIntent，AI-powered automotive social media intent and lead intelligence
 - **定位**：从海量视频评论信息中挖掘高价值的，服务于车企客户销售行为的潜在线索
 - **完整愿景与功能规划**：见 `README.md`
-- **当前阶段**：项目 V0 设计与开发阶段，遵循“小步快跑”式开发原则。
+- **当前阶段**：项目 V1（1.0）正式版开发阶段：微服务化 + 对外 API，遵循“小步快跑”式开发原则。
 
 ## 2. 工作规范
 
