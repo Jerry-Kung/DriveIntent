@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.schemas.import_data import CommentIn, ImportBundle, UserIn, VideoIn
 
@@ -7,9 +7,13 @@ def _parse_time(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value)).replace(tzinfo=None)
+        dt = datetime.fromisoformat(str(value))
     except ValueError:
         return None
+    # 与 xlsx 导入链路对齐：统一存 UTC 基准的 naive 时间
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 def _from_doc_comments(comments: list[dict]) -> ImportBundle:

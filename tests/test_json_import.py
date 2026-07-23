@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.importer.json_source import parse_json_source
 
 
@@ -17,6 +19,18 @@ def test_parse_docformat_comments():
     assert len(bundle.users) == 1
     assert bundle.comments[0].external_id == "cm_1"
     assert bundle.videos[0].title == "试驾"
+    # +08:00 的 14:23 应转为 UTC naive 的 06:23（与 xlsx 导入链路的 UTC 基准对齐）
+    assert bundle.comments[0].comment_time == datetime(2026, 7, 19, 6, 23)
+
+
+def test_parse_time_naive_kept_as_is():
+    raw = {"comments": [{
+        "comment_id": "cm_3", "video_title": "t", "video_author": "@w",
+        "comment_content": "无时区时间", "comment_author": "u",
+        "comment_author_uid": "u3",
+        "comment_time": "2026-07-19T14:23:00"}]}
+    bundle = parse_json_source(raw)
+    assert bundle.comments[0].comment_time == datetime(2026, 7, 19, 14, 23)
 
 
 def test_parse_docformat_skips_empty_content():
