@@ -4,6 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.jobs import reset_running_jobs
+from app.api.routes import api_router
+from app.api.worker import ApiJobWorker
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm.gateway import build_gateway
@@ -25,6 +28,7 @@ async def lifespan(app: FastAPI):
                 settings.db_host, settings.db_port, settings.db_name)
     with SessionLocal() as s:
         reset_running(s)
+        reset_running_jobs(s)
     stop_event = asyncio.Event()
     worker_task = None
     if settings.worker_enabled:
@@ -36,15 +40,26 @@ async def lifespan(app: FastAPI):
                     settings.worker_concurrency)
     else:
         logger.warning("Worker 未启用（WORKER_ENABLED=false），任务不会被执行")
+    api_worker_task = None
+    if settings.api_worker_enabled:
+        api_gateway = build_gateway(session_factory=SessionLocal)
+        api_worker = ApiJobWorker(
+            SessionLocal, SkillExecutor(api_gateway), api_gateway)
+        api_worker_task = asyncio.create_task(
+            api_worker.run_forever(stop_event))
+        logger.info("API Worker 已启动: 并发=%d",
+                    settings.api_worker_concurrency)
     yield
     stop_event.set()
-    if worker_task:
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
+    for t in (worker_task, api_worker_task):
+        if t:
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="DriveIntent", lifespan=lifespan)
 app.include_router(router)
+app.include_router(api_router)
