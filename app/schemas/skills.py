@@ -46,4 +46,7 @@ class UserLeadResult(BaseModel):
     recommended_entry_point: str | None = None
     verification_questions: list[str] = []
     evidence_comment_ids: list[str] = []
+    profile_tags: list[str] = []
+    profile_summary: str = ""
+    analysis_text: str = ""
     confidence: float = 0.0

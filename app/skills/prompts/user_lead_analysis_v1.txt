@@ -22,6 +22,9 @@ $grading_standard
   "recommended_entry_point": "推荐销售切入点，一句话",
   "verification_questions": ["销售需要向用户确认的问题"],
   "evidence_comment_ids": ["支撑结论的评论 comment_id，必须来自输入"],
+  "profile_tags": ["账号画像标签，如：已购车主、智驾关注、高活跃度"],
+  "profile_summary": "账号画像摘要，150-300 字，综合评论行为与主页信息",
+  "analysis_text": "分析过程说明，300-500 字，分评论行为/购车阶段/主页画像/综合评分四段",
   "confidence": 0.9
 }
 
