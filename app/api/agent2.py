@@ -6,8 +6,7 @@ from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway
 from app.schemas.skills import UserLeadResult
-from app.skills.executor import (SkillExecutionError, load_skill_config,
-                                 render_prompt)
+from app.skills.executor import load_skill_config, render_prompt
 from app.skills.vision import build_image_message
 from app.workflow.pipeline import GRADING_STANDARD, USER_ANALYSIS_SKILL
 
@@ -84,7 +83,7 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
             d = mapped.model_dump()
             d["account_uid"] = account.account_uid
             results.append(d)
-        except (SkillExecutionError, Exception) as e:
+        except Exception as e:
             results.append({
                 "account_uid": account.account_uid, "has_value": False,
                 "intent_level": None, "intent_level_code": None,

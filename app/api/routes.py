@@ -1,9 +1,13 @@
+from datetime import timedelta, timezone
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.api.jobs import create_job, get_job
 from app.api.schemas import CommentScreeningRequest, ProfileAnalysisRequest
 from app.config import settings
 from app.db import SessionLocal
+
+_TZ8 = timezone(timedelta(hours=8))
 
 api_router = APIRouter()
 
@@ -60,7 +64,10 @@ def get_job_status(job_id: str, db=Depends(get_db)):
         "job_id": job.id, "type": job.job_type, "status": job.status,
         "progress": {"total": job.progress_total, "done": job.progress_done},
         "result": job.result, "error": job.error,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "finished_at": (job.finished_at.isoformat()
+        "created_at": (job.created_at.replace(tzinfo=timezone.utc)
+                       .astimezone(_TZ8).isoformat()
+                       if job.created_at else None),
+        "finished_at": (job.finished_at.replace(tzinfo=timezone.utc)
+                        .astimezone(_TZ8).isoformat()
                         if job.finished_at else None),
     }

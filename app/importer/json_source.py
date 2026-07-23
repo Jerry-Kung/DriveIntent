@@ -40,8 +40,13 @@ def _from_doc_comments(comments: list[dict]) -> ImportBundle:
         if content is None or not str(content).strip():
             skipped += 1
             continue
+        cid = c.get("comment_id")
+        if not cid:
+            # 缺失评论 id 的条目一并计入 skipped_empty_comments（内容为空计数器）
+            skipped += 1
+            continue
         items.append(CommentIn(
-            external_id=c["comment_id"], video_external_id=video_key,
+            external_id=cid, video_external_id=video_key,
             user_external_id=uid, content=str(content),
             comment_time=_parse_time(c.get("comment_time")),
             raw={"comment_like_count": c.get("comment_like_count")}))
