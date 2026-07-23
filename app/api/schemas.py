@@ -1,5 +1,16 @@
 from pydantic import BaseModel
 
+# 字段必填性设计说明：
+# 对接文档标注为「必填」的核心标识字段（如 comment_id、video_title、video_author、
+# comment_content、comment_author、comment_author_uid、comment_time、account_uid、
+# account_name 等）不设默认值，缺失即触发 Pydantic 校验失败，由 API 层返回错误。
+# 而 video_metrics、video_author_fans、comment_like_count、
+# account_homepage_screenshot、account_douyin_id、comment_history 等字段设默认值，
+# 用于兼容对接文档所述的降级场景：视频热度指标缺失时走默认权重，账号主页截图/
+# 评论历史缺失时走降级分析路径。
+# 输出模型中的 error 字段为 V1 内部新增（对接文档未定义，partial 标注），
+# 用于标记单条结果的处理错误信息，默认 None。
+
 
 class VideoMetrics(BaseModel):
     like_count: int = 0
