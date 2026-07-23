@@ -5,11 +5,11 @@ from app.schemas.skills import CommentScreeningItem, UserLeadResult
 
 _TZ = timezone(timedelta(hours=8))
 
-# 内部四维判断 → 文档过滤原因枚举
+# 内部线索等级 → 文档意向等级/基准分/区间下界
 _GRADE_MAP = {
-    "H": ("高", "high", 92),
-    "A": ("中", "medium", 77),
-    "B": ("低", "low", 60),
+    "H": ("高", "high", 92, 85),
+    "A": ("中", "medium", 77, 70),
+    "B": ("低", "low", 60, 50),
 }
 
 
@@ -20,8 +20,6 @@ def now_iso() -> str:
 def _filter_reason(item: CommentScreeningItem) -> str:
     if item.is_suspected_marketing:
         return "广告/引流类评论"
-    if not item.is_meaningful:
-        return "无实质内容"
     return "无实质内容"
 
 
@@ -45,10 +43,10 @@ def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,
             profile_tags=list(out.profile_tags),
             profile_summary=out.profile_summary,
             analysis=out.analysis_text, processed_at=processed_at)
-    level, code, base = mapped
+    level, code, base, floor = mapped
     score = base
     if not screenshot_available:
-        score = max(50, score - 13)  # 文档：截图缺失降 10-15 分
+        score = max(floor, score - 13)  # 文档：截图缺失降 10-15 分，钳制在等级区间下界
     return ProfileResult(
         account_uid="", has_value=True, intent_level=level,
         intent_level_code=code, value_score=score,

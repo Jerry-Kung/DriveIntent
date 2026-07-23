@@ -57,6 +57,14 @@ def test_map_profile_screenshot_missing_lowers_score():
     without = map_profile_result(out, screenshot_available=False,
                                  has_comments=True, processed_at="t")
     assert without.value_score < with_shot.value_score
+    assert without.value_score >= 70  # 不得跌出 A 级(medium) 70-84 区间
+
+
+def test_map_profile_screenshot_missing_high_grade_stays_in_range():
+    out = UserLeadResult(lead_grade="H", is_valid_lead=True, confidence=0.9)
+    without = map_profile_result(out, screenshot_available=False,
+                                 has_comments=True, processed_at="t")
+    assert without.value_score >= 85  # 不得跌出 H 级(high) 85-100 区间
 
 
 def test_map_profile_no_comments():
