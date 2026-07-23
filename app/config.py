@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     worker_poll_interval: float = 1.0
     comment_batch_size: int = 30
 
+    api_keys: str = ""
+    api_worker_enabled: bool = True
+    api_worker_concurrency: int = 3
+    image_fetch_timeout_seconds: int = 30
+
+    @property
+    def api_keys_list(self) -> list[str]:
+        return [k.strip() for k in self.api_keys.split(",") if k.strip()]
+
     @property
     def db_url(self) -> str:
         user = quote_plus(self.db_user)
