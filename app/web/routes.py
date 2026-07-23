@@ -1,6 +1,7 @@
 import logging
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -13,7 +14,9 @@ from app.importer.core import import_bundle
 from app.importer.excel import parse_excel
 from app.models import Lead, Video
 from app.services.aggregation import build_user_evidence
-from app.services.leads import lead_to_dict, leads_to_csv, query_leads
+from app.services.leads import (lead_to_dict, leads_to_csv, leads_to_dicts,
+                                query_leads, query_screened_out_comments,
+                                query_unclassified_users)
 from app.workflow.pipeline import advance, schedule_analysis
 from app.workflow.tasks import list_failed_tasks, retry_task, task_counts
 
@@ -34,7 +37,8 @@ def get_db():
 
 @router.get("/")
 def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {})
+    return templates.TemplateResponse(request, "index.html",
+                                      {"active": "index"})
 
 
 # 同步端点：FastAPI 会放到线程池执行，解析与批量入库不会阻塞事件循环
@@ -98,11 +102,15 @@ def leads_page(request: Request, grade: str | None = None,
                review_status: str | None = None, db=Depends(get_db)):
     leads = query_leads(db, grade=grade, brand=brand, model=model,
                         review_status=review_status)
-    rows = [lead_to_dict(db, l) for l in leads]
+    rows = leads_to_dicts(db, leads)
+    invalid_rows = query_unclassified_users(db)
+    screened_out = query_screened_out_comments(db)
     return templates.TemplateResponse(
         request, "leads.html",
         {"rows": rows, "grade": grade or "", "brand": brand or "",
-         "model": model or "", "review_status": review_status or ""})
+         "model": model or "", "review_status": review_status or "",
+         "invalid_rows": invalid_rows, "screened_out": screened_out,
+         "active": "leads"})
 
 
 @router.get("/leads/{lead_id}")
@@ -113,7 +121,8 @@ def lead_detail_page(request: Request, lead_id: int, db=Depends(get_db)):
     d = lead_to_dict(db, lead)
     evidence_pack = build_user_evidence(db, lead.user_id)
     return templates.TemplateResponse(
-        request, "lead_detail.html", {"lead": d, "pack": evidence_pack})
+        request, "lead_detail.html",
+        {"lead": d, "pack": evidence_pack, "active": "leads"})
 
 
 @router.get("/api/leads")
@@ -122,7 +131,7 @@ def api_leads(grade: str | None = None, brand: str | None = None,
               db=Depends(get_db)):
     leads = query_leads(db, grade=grade, brand=brand, model=model,
                         review_status=review_status)
-    return [lead_to_dict(db, l) for l in leads]
+    return leads_to_dicts(db, leads)
 
 
 @router.get("/api/leads/export")
@@ -136,6 +145,40 @@ def api_leads_export(grade: str | None = None, brand: str | None = None,
     return Response(csv_text, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition":
                              'attachment; filename="leads.csv"'})
+
+
+REVIEW_STATUS_NAMES = {"unreviewed": "未审核", "valid": "有效",
+                       "invalid": "无效"}
+
+
+@router.get("/api/leads/export/html")
+def api_leads_export_html(grade: str | None = None, brand: str | None = None,
+                          model: str | None = None,
+                          review_status: str | None = None,
+                          db=Depends(get_db)):
+    leads = query_leads(db, grade=grade or None, brand=brand or None,
+                        model=model or None,
+                        review_status=review_status or None)
+    rows = leads_to_dicts(db, leads)
+    grade_counts: dict[str, int] = {}
+    for r in rows:
+        grade_counts[r["grade"]] = grade_counts.get(r["grade"], 0) + 1
+    filters = [f"等级 {grade}" if grade else "",
+               f"品牌 {brand}" if brand else "",
+               f"车型 {model}" if model else "",
+               ("审核状态 " + REVIEW_STATUS_NAMES.get(review_status,
+                                                  review_status))
+               if review_status else ""]
+    filter_text = "；".join(x for x in filters if x) or "全部"
+    html = templates.env.get_template("export_leads.html").render(
+        rows=rows, grade_counts=grade_counts, filter_text=filter_text,
+        invalid_rows=query_unclassified_users(db),
+        screened_out=query_screened_out_comments(db),
+        status_names=REVIEW_STATUS_NAMES,
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    return Response(html, media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition":
+                             'attachment; filename="leads.html"'})
 
 
 @router.get("/api/leads/{lead_id}")

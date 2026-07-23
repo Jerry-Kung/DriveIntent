@@ -1,58 +1,182 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>DriveIntent - 线索列表</title>
-  <style>
-    body { font-family: "Microsoft YaHei", sans-serif; margin: 2rem; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ccc; padding: 4px 8px; font-size: 14px; }
-    .grade-H { color: #c00; font-weight: bold; }
-    .grade-A { color: #e60; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h1>线索列表</h1>
-  <p><a href="/">← 任务页</a>
-     <a href="/api/leads/export?grade={{ grade }}&brand={{ brand }}&model={{ model }}&review_status={{ review_status }}">导出 CSV</a></p>
-  <form method="get">
-    等级：
-    <select name="grade">
-      <option value="">全部</option>
-      {% for g in ["H", "A", "B", "C"] %}
-      <option value="{{ g }}" {% if grade == g %}selected{% endif %}>{{ g }}</option>
-      {% endfor %}
-    </select>
-    品牌：
-    <input type="text" name="brand" value="{{ brand }}" placeholder="品牌">
-    车型：
-    <input type="text" name="model" value="{{ model }}" placeholder="车型">
-    审核状态：
-    <select name="review_status">
-      <option value="">全部</option>
-      <option value="unreviewed" {% if review_status == "unreviewed" %}selected{% endif %}>未审核</option>
-      <option value="valid" {% if review_status == "valid" %}selected{% endif %}>有效</option>
-      <option value="invalid" {% if review_status == "invalid" %}selected{% endif %}>无效</option>
-    </select>
-    <button type="submit">筛选</button>
-  </form>
-  <table>
-    <tr><th>昵称</th><th>等级</th><th>品牌/车型</th><th>摘要</th>
-        <th>核心需求</th><th>主要顾虑</th><th>置信度</th>
-        <th>审核状态</th><th>详情</th></tr>
-    {% for r in rows %}
-    <tr>
-      <td>{{ r.nickname }}</td>
-      <td class="grade-{{ r.grade }}">{{ r.grade }}</td>
-      <td>{{ r.target_brands | join("/") }} {{ r.target_models | join("/") }}</td>
-      <td>{{ r.summary }}</td>
-      <td>{{ r.core_needs | join("、") }}</td>
-      <td>{{ r.main_concerns | join("、") }}</td>
-      <td>{{ "%.2f" | format(r.confidence or 0) }}</td>
-      <td>{{ r.review_status }}</td>
-      <td><a href="/leads/{{ r.id }}">查看</a></td>
-    </tr>
-    {% endfor %}
-  </table>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}DriveIntent - 线索列表{% endblock %}
+
+{% set status_names = {"unreviewed": "未审核", "valid": "有效",
+                       "invalid": "无效"} %}
+
+{% block content %}
+  <section class="card">
+    <form method="get" class="toolbar">
+      <label>等级
+        <select name="grade">
+          <option value="">全部</option>
+          {% for g in ["H", "A", "B", "C"] %}
+          <option value="{{ g }}" {% if grade == g %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>品牌
+        <input type="text" name="brand" value="{{ brand }}" placeholder="品牌">
+      </label>
+      <label>车型
+        <input type="text" name="model" value="{{ model }}" placeholder="车型">
+      </label>
+      <label>审核状态
+        <select name="review_status">
+          <option value="">全部</option>
+          {% for v, name in status_names.items() %}
+          <option value="{{ v }}" {% if review_status == v %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="primary">筛选</button>
+      <span class="spacer"></span>
+      {% set qs = "grade=" ~ grade ~ "&brand=" ~ brand ~ "&model=" ~ model
+                  ~ "&review_status=" ~ review_status %}
+      <a class="btn" href="/api/leads/export?{{ qs }}">导出 CSV</a>
+      <a class="btn" href="/api/leads/export/html?{{ qs }}">导出 HTML</a>
+    </form>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head">
+      <h2>线索列表</h2>
+      <span class="hint">共 {{ rows | length }} 条，按等级与置信度排序</span>
+    </div>
+    {% if rows %}
+    <div class="table-wrap">
+      <table class="leads-table">
+        <colgroup>
+          <col style="width:11%"><col style="width:5%">
+          <col style="width:12%"><col style="width:28%">
+          <col style="width:13%"><col style="width:13%">
+          <col style="width:6%"><col style="width:7%">
+          <col style="width:5%">
+        </colgroup>
+        <tr><th>昵称</th><th>等级</th><th>品牌/车型</th><th>摘要</th>
+            <th>核心需求</th><th>主要顾虑</th><th>置信度</th>
+            <th>审核状态</th><th>详情</th></tr>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.nickname }}</td>
+          <td><span class="grade grade-{{ r.grade }}">{{ r.grade }}</span></td>
+          <td>{{ r.target_brands | join("/") }} {{ r.target_models | join("/") }}</td>
+          <td>{{ r.summary }}</td>
+          <td>{{ r.core_needs | join("、") }}</td>
+          <td>{{ r.main_concerns | join("、") }}</td>
+          <td class="num">{{ "%.2f" | format(r.confidence or 0) }}</td>
+          <td><span class="pill pill-{{ r.review_status }}">{{ status_names.get(r.review_status, r.review_status) }}</span></td>
+          <td><a href="/leads/{{ r.id }}">查看</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">暂无线索。请先在「分析任务」页导入数据并启动分析，
+      或调整筛选条件。</div>
+    {% endif %}
+  </section>
+
+  {% if invalid_rows %}
+  <section class="card flush">
+    <div class="card-head">
+      <h2>无效评论（未纳入 HABC 分级）</h2>
+      <span class="hint">共 {{ invalid_rows | length }} 位用户，
+        供人工复核分类结果</span>
+    </div>
+    <div class="table-wrap">
+      <table class="leads-table">
+        <colgroup>
+          <col style="width:10%"><col style="width:7%">
+          <col style="width:12%"><col style="width:30%">
+          <col style="width:35%"><col style="width:6%">
+        </colgroup>
+        <tr><th>昵称</th><th>判定</th><th>品牌/车型</th>
+            <th>判定说明</th><th>原始评论</th><th>置信度</th></tr>
+        {% for r in invalid_rows %}
+        <tr>
+          <td>{{ r.nickname }}</td>
+          <td>
+            {% if r.verdict == "invalid" %}
+            <span class="pill pill-invalid">无效</span>
+            {% else %}
+            <span class="pill">证据缺失</span>
+            {% endif %}
+          </td>
+          <td>{{ r.target_brands | join("/") }} {{ r.target_models | join("/") }}</td>
+          <td>{{ r.summary }}</td>
+          <td>
+            {% for c in r.comments %}
+            <div class="ev">{{ c }}</div>
+            {% endfor %}
+          </td>
+          <td class="num">{{ "%.2f" | format(r.confidence or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if screened_out %}
+  {% set n_marketing = screened_out | selectattr("category", "equalto",
+                                                 "marketing") | list | length %}
+  {% set n_unrelated = screened_out | length - n_marketing %}
+  <details class="card flush fold">
+    <summary class="card-head">
+      <h2>未通过初筛的评论</h2>
+      <span class="hint">共 {{ screened_out | length }} 条
+        （疑似水军 {{ n_marketing }} · 非购车相关 {{ n_unrelated }}），
+        供人工核验初筛效果</span>
+    </summary>
+    <div class="table-wrap">
+      <table class="leads-table">
+        <colgroup>
+          <col style="width:10%"><col style="width:9%">
+          <col style="width:34%"><col style="width:41%">
+          <col style="width:6%">
+        </colgroup>
+        <tr><th>昵称</th><th>判定</th><th>评论内容</th>
+            <th>初筛理由</th><th>置信度</th></tr>
+        {% for c in screened_out %}
+        <tr>
+          <td>{{ c.nickname }}</td>
+          <td>
+            {% if c.category == "marketing" %}
+            <span class="pill pill-invalid">疑似水军</span>
+            {% else %}
+            <span class="pill">非购车相关</span>
+            {% endif %}
+          </td>
+          <td>{{ c.content }}</td>
+          <td>{{ c.reason }}</td>
+          <td class="num">{{ "%.2f" | format(c.confidence or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </details>
+  {% endif %}
+{% endblock %}
+
+{% block extra_style %}
+    .toolbar { display: flex; align-items: center; gap: 14px;
+               flex-wrap: wrap; }
+    .toolbar label { display: inline-flex; align-items: center; gap: 6px;
+                     font-size: 14px; color: var(--muted); }
+    .toolbar input[type=text] { width: 120px; }
+    .spacer { flex: 1; }
+    .ev + .ev { margin-top: 5px; padding-top: 5px;
+                border-top: 1px dashed var(--line); }
+    /* 固定比例列宽：桌面端不出现横向滚动；窄屏由 table-wrap 兜底滚动 */
+    .leads-table { table-layout: fixed; min-width: 860px; }
+    .leads-table td { overflow-wrap: anywhere; }
+    /* 可折叠区块：初筛未通过评论量大，默认收起 */
+    .fold > summary { cursor: pointer; list-style: none; }
+    .fold > summary::-webkit-details-marker { display: none; }
+    .fold > summary::after { content: "展开 ▾"; margin-left: auto;
+                             color: var(--plate); font-size: 13px;
+                             white-space: nowrap; }
+    .fold[open] > summary::after { content: "收起 ▴"; }
+    .fold:not([open]) > summary.card-head { border-bottom: none; }
+{% endblock %}

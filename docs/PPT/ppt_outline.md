@@ -3,7 +3,7 @@
 来源:`README.md`(总体设计 V0.1)、`claude_docs/2026-07-20-v0-design.md`(V0 实现设计)。
 成品:`docs/DriveIntent技术方案.pptx`,由 `docs/build_ppt.js`(pptxgenjs)生成。
 
-版式:16:9 宽屏(13.3"×7.5"),深色概览页 + 浅色内容页,共 8 页。
+版式:16:9 宽屏(13.3"×7.5"),深色概览页 + 浅色内容页,共 10 页。
 视觉基调:深蓝 `1E2761` 主色 + 青色 `00A8CC` 强调;等级色 H `E63946` / A `E8890C` / B `2A9D8F` / C `8D99AE`;卡片统一左侧粗色边动机。
 
 | 页 | 主题 | 核心内容与呈现形式 |
@@ -14,5 +14,7 @@
 | 4 | 数据模型 | 7 表简化 ER 图(L1 三表 FK 关系 + 任务/结果/线索/日志);四条数据设计原则(幂等唯一键、raw_data 保留、多版本并存、审核字段) |
 | 5 | LLM Gateway 与 Skill 机制 | 左:Gateway 统一接口签名、Provider 适配(OpenAICompat/Mock)、内置能力;右:Skill 三要素(YAML+Prompt+Schema)与执行器 8 步流程图 |
 | 6 | 三个核心 Skill 与分级标准 | 三 Skill 对比表(粒度/输入/输出/关键策略);H/A/B/C 四级标准色条 + 内部过滤状态;批次防错位机制链 |
-| 7 | 任务调度与可靠性 | 任务状态机图(pending/running/success/failed + 重试/恢复);幂等键构成;异常处理对照表(6 类);版本化重分析机制 |
-| 8 | 业务应用与评测 | 页面与 API 清单(3 页面 + 8 端点);人工审核闭环(反馈→Prompt 样本/Few-shot/回归集);评测指标四组 + 业务验证指标;评测脚手架 |
+| 7 | Prompt 设计详解 | 五段式统一骨架(角色→上下文注入→判断原则→输出 JSON 规格→硬性约束);三个 Prompt 模板逐一剖析(变量、意向阶梯、反例规则、证据约束);共性设计原则(内联 Schema、裸 JSON、reason+confidence、低温) |
+| 8 | 工作流组装:Skill 注入机制 | Skill 注入三步(SKILL_VERSIONS 注册→Worker 按 task_type 分派→pipeline 组装函数);一次 Skill 调用组装过程代码面板;数据接力图(上游结果=下游 Prompt 原料);advance() 任务链推进与新增 Skill 扩展路径 |
+| 9 | 任务调度与可靠性 | 任务状态机图(pending/running/success/failed + 重试/恢复);幂等键构成;异常处理对照表(6 类);版本化重分析机制 |
+| 10 | 业务应用与评测 | 页面与 API 清单(3 页面 + 8 端点);人工审核闭环(反馈→Prompt 样本/Few-shot/回归集);评测指标四组 + 业务验证指标;评测脚手架 |

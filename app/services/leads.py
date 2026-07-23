@@ -3,7 +3,7 @@ import io
 
 from sqlalchemy.orm import Session
 
-from app.models import Lead, PlatformUser
+from app.models import AnalysisResult, Comment, Lead, PlatformUser
 from app.schemas.skills import UserLeadResult
 
 
@@ -52,8 +52,149 @@ def query_leads(session: Session, *, grade: str | None = None,
                                         -(l.confidence or 0)))
 
 
-def lead_to_dict(session: Session, lead: Lead) -> dict:
-    user = session.get(PlatformUser, lead.user_id)
+# 与 app/workflow/pipeline.py 的同名常量一致；
+# 不直接 import 以避免 pipeline <-> services 循环依赖
+USER_ANALYSIS_SKILL_ID = "user_lead_analysis"
+COMMENT_SCREENING_SKILL_ID = "comment_lead_screening"
+
+
+def _latest_screenings(session: Session) -> dict[int, dict]:
+    """每条评论取最新一次初筛结果，返回 {comment_id: 初筛结果}。"""
+    results = (session.query(AnalysisResult)
+               .filter_by(target_type="comment",
+                          skill_id=COMMENT_SCREENING_SKILL_ID,
+                          status="success")
+               .order_by(AnalysisResult.id).all())
+    latest: dict[int, dict] = {}
+    for r in results:
+        try:
+            latest[int(r.target_id)] = r.result or {}
+        except ValueError:
+            continue
+    return latest
+
+
+def _screening_passed(res: dict) -> bool:
+    return bool(res.get("is_purchase_related")
+                and not res.get("is_suspected_marketing"))
+
+
+def query_screened_out_comments(session: Session) -> list[dict]:
+    """返回未通过评论初筛的评论（每条取最新初筛结果），供人工核验初筛效果。
+
+    含两类：疑似营销水军（category="marketing"），
+    以及与购车无关（category="unrelated"）。
+    """
+    dropped = [(cid, res) for cid, res in _latest_screenings(session).items()
+               if not _screening_passed(res)]
+
+    comment_ids = [cid for cid, _ in dropped]
+    comments = ({c.id: c for c in session.query(Comment)
+                 .filter(Comment.id.in_(comment_ids)).all()}
+                if comment_ids else {})
+    user_ids = {c.user_id for c in comments.values()}
+    users = ({u.id: u for u in session.query(PlatformUser)
+              .filter(PlatformUser.id.in_(user_ids)).all()}
+             if user_ids else {})
+
+    rows: list[dict] = []
+    for cid, res in dropped:
+        c = comments.get(cid)
+        if c is None:
+            continue
+        u = users.get(c.user_id)
+        rows.append({
+            "comment_id": cid,
+            "content": c.content or "",
+            "nickname": u.nickname if u else "",
+            "platform": u.platform if u else "",
+            "category": ("marketing" if res.get("is_suspected_marketing")
+                         else "unrelated"),
+            "reason": res.get("reason") or "",
+            "confidence": res.get("confidence"),
+        })
+    # 疑似水军在前（数量少、复核价值高），组内按置信度降序
+    return sorted(rows, key=lambda d: (0 if d["category"] == "marketing"
+                                       else 1, -(d["confidence"] or 0)))
+
+
+def query_unclassified_users(session: Session) -> list[dict]:
+    """返回已做用户深度分析但未进入 HABC 线索库的用户（每人取最新结果）。
+
+    包含两类：模型判定 is_valid_lead=false（水军、无真实购车需求等），
+    以及判定有效但证据评论全部无法核实而被拦下的用户。
+    附带该用户进入深度分析时的原始评论内容（即通过初筛的评论），
+    供人工复核。全程批量查询，避免逐用户多次数据库往返。
+    """
+    lead_user_ids = {uid for (uid,) in session.query(Lead.user_id).all()}
+    results = (session.query(AnalysisResult)
+               .filter_by(target_type="user", skill_id=USER_ANALYSIS_SKILL_ID,
+                          status="success")
+               .order_by(AnalysisResult.id.desc()).all())
+    seen: set[int] = set()
+    pending: list[tuple[int, dict]] = []
+    for r in results:
+        try:
+            uid = int(r.target_id)
+        except ValueError:
+            continue
+        if uid in seen:
+            continue
+        seen.add(uid)
+        if uid in lead_user_ids:
+            continue
+        pending.append((uid, r.result or {}))
+    if not pending:
+        return []
+
+    uids = [uid for uid, _ in pending]
+    users = {u.id: u for u in session.query(PlatformUser)
+             .filter(PlatformUser.id.in_(uids)).all()}
+    passed_ids = [cid for cid, res in _latest_screenings(session).items()
+                  if _screening_passed(res)]
+    comments_by_user: dict[int, list[str]] = {}
+    if passed_ids:
+        for c in (session.query(Comment)
+                  .filter(Comment.user_id.in_(uids),
+                          Comment.id.in_(passed_ids))
+                  .order_by(Comment.comment_time).all()):
+            comments_by_user.setdefault(c.user_id, []).append(c.content)
+
+    rows: list[dict] = []
+    for uid, res in pending:
+        user = users.get(uid)
+        rows.append({
+            "user_id": uid,
+            "nickname": user.nickname if user else "",
+            "platform": user.platform if user else "",
+            "verdict": ("invalid" if not res.get("is_valid_lead")
+                        else "no_evidence"),
+            "summary": res.get("lead_summary") or "",
+            "target_brands": res.get("target_brands") or [],
+            "target_models": res.get("target_models") or [],
+            "confidence": res.get("confidence"),
+            "comments": comments_by_user.get(uid, []),
+        })
+    return sorted(rows, key=lambda d: -(d["confidence"] or 0))
+
+
+def leads_to_dicts(session: Session, leads: list[Lead]) -> list[dict]:
+    """批量转换线索。一次性取回全部关联用户并显式传入，避免逐条线索
+    一次用户查询的 N+1 往返（远程库下每次往返数十毫秒，147 条即数秒）。
+    注意不能只靠预取“预热” session：身份映射是弱引用，预取结果一丢弃
+    就会被回收，session.get 仍会逐条查库。"""
+    uids = list({l.user_id for l in leads})
+    users = ({u.id: u for u in session.query(PlatformUser)
+              .filter(PlatformUser.id.in_(uids)).all()}
+             if uids else {})
+    return [lead_to_dict(session, l, user=users.get(l.user_id))
+            for l in leads]
+
+
+def lead_to_dict(session: Session, lead: Lead,
+                 user: PlatformUser | None = None) -> dict:
+    if user is None:
+        user = session.get(PlatformUser, lead.user_id)
     return {
         "id": lead.id, "nickname": user.nickname if user else "",
         "platform": user.platform if user else "", "grade": lead.grade,
@@ -87,8 +228,7 @@ def leads_to_csv(session: Session, leads: list[Lead]) -> str:
     writer.writerow(["昵称", "平台", "等级", "品牌", "车型", "摘要",
                      "核心需求", "主要顾虑", "购车时间", "销售切入点",
                      "置信度", "审核状态", "分析时间"])
-    for lead in leads:
-        d = lead_to_dict(session, lead)
+    for d in leads_to_dicts(session, leads):
         writer.writerow([
             _csv_safe(d["nickname"]), _csv_safe(d["platform"]),
             _csv_safe(d["grade"]),

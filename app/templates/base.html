@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DriveIntent{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #edf0f4;
+      --surface: #ffffff;
+      --ink: #182230;
+      --muted: #66738a;
+      --line: #dce2ea;
+      --plate: #17509e;      /* 车牌蓝：全站主色 */
+      --plate-dark: #103a75;
+      --ok: #177a45;
+      --warn: #b45309;
+      --bad: #b3261e;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 15px/1.65 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+    a { color: var(--plate); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar { background: #161d27; color: #f5f7fa;
+              border-bottom: 3px solid var(--plate); }
+    .topbar-inner { max-width: 1200px; margin: 0 auto; padding: 13px 24px;
+                    display: flex; align-items: center; gap: 18px;
+                    flex-wrap: wrap; }
+    .mark { display: inline-flex; align-items: center; justify-content: center;
+            width: 36px; height: 26px; border-radius: 5px;
+            background: var(--plate); color: #fff; font-weight: 700;
+            font-size: 13px; letter-spacing: 1px;
+            box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.5); }
+    .brand { display: flex; align-items: center; gap: 10px;
+             font-size: 17px; font-weight: 600; letter-spacing: .5px; }
+    .brand small { color: #9aa7b8; font-weight: 400; font-size: 13px; }
+    .nav { margin-left: auto; display: flex; gap: 4px; }
+    .nav a { color: #c3cddb; padding: 5px 12px; border-radius: 6px;
+             font-size: 14px; }
+    .nav a:hover { color: #fff; background: rgba(255,255,255,.08);
+                   text-decoration: none; }
+    .nav a.active { color: #fff; background: rgba(255,255,255,.14); }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    main.narrow { max-width: 900px; }
+
+    .card { background: var(--surface); border: 1px solid var(--line);
+            border-radius: var(--radius); padding: 18px 20px;
+            margin-bottom: 18px;
+            box-shadow: 0 1px 2px rgba(24, 34, 48, .04); }
+    .card > h2, .card-head h2 { margin: 0 0 12px; font-size: 16px;
+                 display: flex; align-items: center; gap: 10px; }
+    .card.flush { padding: 0; overflow: hidden; }
+    .card-head { display: flex; align-items: center; gap: 10px;
+                 flex-wrap: wrap; padding: 14px 20px;
+                 border-bottom: 1px solid var(--line); }
+    .card-head h2 { margin: 0; }
+    .step { display: inline-flex; width: 24px; height: 24px; flex: none;
+            align-items: center; justify-content: center; border-radius: 50%;
+            background: var(--ink); color: #fff;
+            font-size: 13px; font-weight: 600; }
+
+    button, .btn { font: inherit; font-size: 14px; border-radius: 7px;
+                   padding: 6px 16px; cursor: pointer; color: var(--ink);
+                   border: 1px solid var(--line); background: #fff;
+                   display: inline-block; }
+    button:hover, .btn:hover { border-color: var(--plate);
+                               color: var(--plate); text-decoration: none; }
+    .primary { background: var(--plate); border-color: var(--plate-dark);
+               color: #fff; font-weight: 600; }
+    .primary:hover { background: var(--plate-dark); color: #fff; }
+    button:focus-visible, a:focus-visible, input:focus-visible,
+    select:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--plate); outline-offset: 2px; }
+    input[type=text], select, textarea {
+      font: inherit; font-size: 14px; padding: 6px 10px;
+      border: 1px solid var(--line); border-radius: 7px;
+      background: #fff; color: var(--ink); }
+
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%;
+            background: var(--surface); font-size: 14px; }
+    th { text-align: left; font-size: 12.5px; letter-spacing: .4px;
+         color: var(--muted); font-weight: 600; background: #f5f7fa;
+         white-space: nowrap; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 12px;
+             vertical-align: top; }
+    tbody tr:hover td, tr.hoverable:hover td { background: #f7f9fc; }
+    .num { font-variant-numeric: tabular-nums; }
+
+    .grade { display: inline-flex; min-width: 26px; height: 22px;
+             padding: 0 7px; align-items: center; justify-content: center;
+             border-radius: 5px; font-weight: 700; font-size: 13px;
+             color: #fff; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45); }
+    .grade-H { background: #b3261e; }
+    .grade-A { background: #c96a0d; }
+    .grade-B { background: #17509e; }
+    .grade-C { background: #66738a; }
+
+    .pill { display: inline-block; padding: 1px 9px; border-radius: 999px;
+            font-size: 12.5px; border: 1px solid var(--line);
+            color: var(--muted); white-space: nowrap; }
+    .pill-valid { color: var(--ok); border-color: #bfdccb;
+                  background: #f0f8f3; }
+    .pill-invalid { color: var(--bad); border-color: #e5c4c2;
+                    background: #fbf1f0; }
+
+    .hint { color: var(--muted); font-size: 13px; }
+    .empty { color: var(--muted); text-align: center; padding: 28px 12px; }
+    .ok-text { color: var(--ok); }
+    .bad-text { color: var(--bad); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+    {% block extra_style %}{% endblock %}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="mark">DI</span>
+        DriveIntent <small>线索获客</small>
+      </div>
+      <nav class="nav">
+        <a href="/" class="{% if active == 'index' %}active{% endif %}">分析任务</a>
+        <a href="/leads" class="{% if active == 'leads' %}active{% endif %}">线索列表</a>
+      </nav>
+    </div>
+  </header>
+  <main class="{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% block script %}{% endblock %}
+</body>
+</html>

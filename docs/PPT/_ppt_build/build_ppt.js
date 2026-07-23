@@ -496,10 +496,158 @@ function chip(s, x, y, w, h, text, fill, color, fs) {
     { x: rx + 0.14, y: 6.66, w: rw - 0.28, h: 0.26, fontFace: F, fontSize: 7.5, color: C.muted, italic: true, margin: 0 });
 })();
 
-/* ================= S7 任务调度与可靠性 ================= */
-(function s7() {
+/* ================= S7 Prompt 设计详解 ================= */
+(function s7prompt() {
   const s = p.addSlide();
-  header(s, 7, "任务调度与可靠性", "数据库任务表 + 进程内 asyncio Worker:无消息队列的最小可靠执行方案");
+  header(s, 7, "Prompt 设计详解:三个 Skill 的提示词工程", "五段式统一骨架 + 各 Skill 专属判断原则;输出规格内联于 Prompt,与 Pydantic Schema 一一对应");
+
+  // 顶部:五段式骨架
+  const segs = [
+    ["① 角色设定", "“你是汽车行业/销售线索分析专家”,锚定领域与口吻"],
+    ["② 上下文注入", "$变量填充结构化 JSON(string.Template 替换)"],
+    ["③ 判断原则", "意向分层 / 分级标准 / 正反例与边界规则"],
+    ["④ 输出 JSON 规格", "内联 JSON 示例,字段级填写说明即 Schema"],
+    ["⑤ 硬性约束", "禁编造 · null 语义 · 只输出裸 JSON"],
+  ];
+  segs.forEach((g, i) => {
+    const x = 0.45 + i * 2.54, y = 1.05, w = 2.24, h = 0.84;
+    s.addShape(p.shapes.RECTANGLE, { x, y, w, h, fill: { color: "EEF2FA" }, line: { color: C.line, width: 0.5 } });
+    s.addText(g[0], { x: x + 0.09, y: y + 0.06, w: w - 0.18, h: 0.24, fontFace: F, fontSize: 9, bold: true, color: C.navy, margin: 0 });
+    s.addText(g[1], { x: x + 0.09, y: y + 0.31, w: w - 0.18, h: 0.5, fontFace: F, fontSize: 7, color: C.muted, valign: "top", margin: 0 });
+    if (i < segs.length - 1) arrowR(s, x + w + 0.03, y + 0.34, 0.2);
+  });
+
+  // 三个 Skill 的提示词剖析
+  const cw2 = 4.03, gap2 = 0.16;
+  const skills = [
+    ["① video_context_analysis", "prompts/video_context_analysis_v1.txt", C.cyanDeep, [
+      { t: "角色:汽车行业短视频内容分析专家", opts: { bullet: { code: "2022" } } },
+      { t: "变量:$video_json——标题 / 文案 / 话题标签 / 账号类型 / 转写 / 预置品牌车型(预留字段为空也占位,升级免改模板)", opts: { bullet: { code: "2022" } } },
+      { t: "输出 8 字段语境;analysis_notes 是写给下游筛选 Skill 的“评论分析注意事项”——Skill 间的提示接力", opts: { bullet: { code: "2022" } } },
+      { t: "规范化:品牌车型用标准名(“坦克300”而非“坦克三百”),保证下游匹配与聚合", opts: { bullet: { code: "2022" } } },
+      { t: "防幻觉:只依据给出信息判断、不编造;无法判断输出 null", opts: { bullet: { code: "2022" } } },
+    ]],
+    ["② comment_lead_screening", "prompts/comment_lead_screening_v1.txt", C.steel, [
+      { t: "变量:$video_context_json + $comments_json(每条带 comment_id)+ $comment_count", opts: { bullet: { code: "2022" } } },
+      { t: "四层意向阶梯写入 Prompt 并附示例句:正面情绪→产品兴趣→潜在需求→明确意向,杜绝“好看=想买”误判", opts: { bullet: { code: "2022" } } },
+      { t: "意向信号枚举 9 种:询价 / 置换 / 试驾 / 金融 / 门店 / 竞品对比 / 配置 / 用车成本 / 购车计划", opts: { bullet: { code: "2022" } } },
+      { t: "反例规则:“厉害 / 哈哈 / 排面”→无意义;号召购买、模板化夸赞→疑似营销;负面情绪含真实换车需求→不得过滤", opts: { bullet: { code: "2022" } } },
+      { t: "硬约束:items 与输入一一对应——数量相同、comment_id 原样返回、不得遗漏或新增(防批量错位)", opts: { bullet: { code: "2022" } } },
+      { t: "回退策略:评论未指明品牌车型时,回退使用视频语境值", opts: { bullet: { code: "2022" } } },
+    ]],
+    ["③ user_lead_analysis", "prompts/user_lead_analysis_v1.txt", C.navy, [
+      { t: "变量:$user_evidence_json(用户 + 全部有效评论及各自视频语境 + 统计特征)+ $grading_standard", opts: { bullet: { code: "2022" } } },
+      { t: "H/A/B/C 分级标准为代码常量 GRADING_STANDARD,运行时注入而非写死在模板——标准与措辞可独立迭代", opts: { bullet: { code: "2022" } } },
+      { t: "输出 15 字段销售画像:等级 / 阶段 / 品牌车型 / 需求 / 顾虑 / 时间 / 场景 / 切入点 / 待确认问题 / 证据 / 置信度", opts: { bullet: { code: "2022" } } },
+      { t: "证据硬约束:evidence_comment_ids 不得为空且必须来自输入;无证据字段输出 null / 空数组,严禁推断职业收入", opts: { bullet: { code: "2022" } } },
+      { t: "兜底:疑似营销 / 水军 / 无购车信号→is_valid_lead=false;代码侧再过滤幻觉证据 ID,全为幻觉则不入 lead", opts: { bullet: { code: "2022" } } },
+    ]],
+  ];
+  skills.forEach((sk, i) => {
+    const x = 0.45 + i * (cw2 + gap2), y = 2.1, h = 3.45;
+    card(s, x, y, cw2, h, sk[2]);
+    s.addText(sk[0], { x: x + 0.16, y: y + 0.1, w: cw2 - 0.28, h: 0.26, fontFace: MONO, fontSize: 10, bold: true, color: C.navy, margin: 0 });
+    s.addText(sk[1], { x: x + 0.16, y: y + 0.38, w: cw2 - 0.28, h: 0.2, fontFace: MONO, fontSize: 7, color: C.cyanDeep, margin: 0 });
+    lines(s, x + 0.16, y + 0.64, cw2 - 0.3, h - 0.76,
+      sk[3].map((it, j) => ({ t: it.t, opts: Object.assign({ breakLine: j < sk[3].length - 1, paraSpaceAfter: 8 }, it.opts) })),
+      { fontSize: 8.4, color: C.ink });
+  });
+
+  // 底部:共性设计原则
+  card(s, 0.45, 5.75, 12.43, 1.28, C.gA);
+  s.addText("共性设计原则(跨三个 Skill)", { x: 0.61, y: 5.85, w: 4.2, h: 0.26, fontFace: F, fontSize: 10, bold: true, color: C.navy, margin: 0 });
+  lines(s, 0.61, 6.16, 12.1, 0.82, [
+    "输出规格即 Prompt 内联 JSON 示例(字段说明 + null 语义),与 schemas/skills.py 的 Pydantic 模型一一对应,校验不过即重试;",
+    "要求直接输出裸 JSON、禁止 Markdown 代码块与多余文本,解析层(extract_json)仍兜底剥壳截取,双保险;",
+    "每条结论强制输出 reason + confidence,判断可解释、可人工审核;temperature=0.1,判别类任务追求稳定复现。",
+  ], { fontSize: 8.5, color: C.muted });
+})();
+
+/* ================= S8 工作流组装:Skill 注入机制 ================= */
+(function s8assembly() {
+  const s = p.addSlide();
+  header(s, 8, "工作流组装:Skill 如何注入固定流程", "Skill 与流程零耦合:注册表登记 + Worker 分派 + 组装函数;Skill 之间只通过“任务表 + 结果表”衔接");
+
+  // 左:注入三步
+  const lx = 0.45, lw = 3.9;
+  s.addText("Skill 注入三步", { x: lx, y: 1.08, w: 3, h: 0.26, fontFace: F, fontSize: 11, bold: true, color: C.navy, margin: 0 });
+  const inj = [
+    ["1. 注册", "SKILL_VERSIONS 常量表登记 skill_id → 版本;任务表 task_type 直接复用 skill_id——“一个任务 = 一次 Skill 调用”"],
+    ["2. 分派", "Worker claim_next 领取 pending 任务,按 task_type 三行分支路由到对应组装函数(worker.py),Worker 本身不含业务逻辑"],
+    ["3. 组装执行", "pipeline 组装函数是唯一胶水:取数 → 拼 context 字典 → executor.run(skill_id, context, OutputModel),Skill 内部对流程零感知"],
+  ];
+  inj.forEach((m, i) => {
+    const y = 1.42 + i * 1.34;
+    card(s, lx, y, lw, 1.2, C.cyan);
+    s.addText(m[0], { x: lx + 0.14, y: y + 0.09, w: lw - 0.26, h: 0.24, fontFace: F, fontSize: 9.5, bold: true, color: C.navy, margin: 0 });
+    s.addText(m[1], { x: lx + 0.14, y: y + 0.36, w: lw - 0.26, h: 0.78, fontFace: F, fontSize: 8, color: C.muted, valign: "top", margin: 0 });
+  });
+
+  // 中:一次调用的组装过程(代码面板)
+  const mx = 4.51, mw = 4.9;
+  s.addText("一次 Skill 调用的组装(以评论筛选为例)", { x: mx, y: 1.08, w: mw, h: 0.26, fontFace: F, fontSize: 11, bold: true, color: C.navy, margin: 0 });
+  s.addShape(p.shapes.RECTANGLE, { x: mx, y: 1.42, w: mw, h: 3.02, fill: { color: "22283A" } });
+  lines(s, mx + 0.16, 1.56, mw - 0.32, 2.8, [
+    "# pipeline.screen_comment_batch()",
+    "ctx = get_current_result(video)   # 取上游语境结果",
+    "context = {",
+    "  \"video_context_json\": ctx.result,",
+    "  \"comments_json\": [{comment_id, content}…],",
+    "  \"comment_count\": n }",
+    "prompt = Template(\"…_v1.txt\")",
+    "           .substitute(context)   # $变量替换",
+    "resp = gateway.chat(msgs, skill_id,",
+    "         skill/prompt_version)    # 落调用日志",
+    "data = extract_json(resp.text)    # 剥壳取 JSON",
+    "out  = CommentScreeningResult",
+    "         .model_validate(data)    # Schema 强校验",
+  ], { fontFace: MONO, fontSize: 8, color: "9FE8FF" });
+  s.addText("校验失败换新输出重试(≤3 次);ID 集合与输入不一致 → 整批重试 → 拆半;成功 → save_result 记录 skill_version / prompt_version / model_name",
+    { x: mx, y: 4.52, w: mw, h: 0.5, fontFace: F, fontSize: 7.5, color: C.muted, margin: 0 });
+
+  // 右:数据接力
+  const rx = 9.57, rw = 3.31;
+  s.addText("数据接力:上游结果 = 下游 Prompt 原料", { x: rx, y: 1.08, w: rw, h: 0.26, fontFace: F, fontSize: 10, bold: true, color: C.navy, margin: 0 });
+  const relay = [
+    ["视频语境结果(analysis_result)", C.cyanDeep, "注入 $video_context_json"],
+    ["评论筛选结果 ×N 批", C.steel, "build_user_evidence 打包 + 代码常量 $grading_standard"],
+    ["用户证据包(评论+语境+统计)", "2B7A5B", "注入 $user_evidence_json"],
+    ["用户分析结果 → lead 表", C.navy, ""],
+  ];
+  relay.forEach((r, i) => {
+    const y = 1.42 + i * 0.94;
+    flowBox(s, rx, y, rw, 0.5, r[0], r[1], 8.5);
+    if (r[2]) {
+      s.addShape(p.shapes.DOWN_ARROW, { x: rx + 0.14, y: y + 0.53, w: 0.14, h: 0.36, fill: { color: C.cyan } });
+      s.addText(r[2], { x: rx + 0.36, y: y + 0.52, w: rw - 0.4, h: 0.4, fontFace: F, fontSize: 7, color: C.muted, valign: "middle", margin: 0 });
+    }
+  });
+  s.addText("Skill 间零直接调用:上游输出落库,下游从库中取出注入 Prompt,断链可从任一阶段续跑。",
+    { x: rx, y: 4.82, w: rw, h: 0.56, fontFace: F, fontSize: 7.5, color: C.muted, italic: true, margin: 0 });
+
+  // 底部两卡:advance 编排 + 扩展路径
+  const by = 5.5, bh = 1.55;
+  card(s, 0.45, by, 6.1, bh, C.gB);
+  s.addText("advance():任务链自动推进", { x: 0.61, y: by + 0.08, w: 5.8, h: 0.26, fontFace: F, fontSize: 10, bold: true, color: C.navy, margin: 0 });
+  lines(s, 0.61, by + 0.42, 5.8, bh - 0.55, [
+    "每个任务收尾必调 advance():某视频语境成功 → 为其评论按 30 条/批创建筛选任务;",
+    "语境 + 筛选全部完结 → candidate_user_ids 聚合候选用户 → 创建用户分析任务;",
+    "幂等键防重复建任务;进程重启 running→pending 续跑,任务链断点可恢复。",
+  ], { fontSize: 8.5, color: C.muted });
+
+  card(s, 6.71, by, 6.17, bh, C.gA);
+  s.addText("新增 / 升级 Skill 的扩展路径", { x: 6.87, y: by + 0.08, w: 5.9, h: 0.26, fontFace: F, fontSize: 10, bold: true, color: C.navy, margin: 0 });
+  lines(s, 6.87, by + 0.42, 5.9, bh - 0.55, [
+    "① 三件套:configs/*.yaml + prompts/*_vN.txt + Pydantic Schema;",
+    "② SKILL_VERSIONS 登记(升版本即自动触发历史数据重分析);",
+    "③ pipeline 新增组装函数;④ worker 分派加一行——不动数据结构、不侵入既有 Skill。",
+  ], { fontSize: 8.5, color: C.muted });
+})();
+
+/* ================= S9 任务调度与可靠性 ================= */
+(function s9() {
+  const s = p.addSlide();
+  header(s, 9, "任务调度与可靠性", "数据库任务表 + 进程内 asyncio Worker:无消息队列的最小可靠执行方案");
 
   // 左:状态机
   const lx = 0.45, lw = 6.1;
@@ -570,10 +718,10 @@ function chip(s, x, y, w, h, text, fill, color, fs) {
   ], { fontSize: 8.5, color: C.muted });
 })();
 
-/* ================= S8 业务应用与评测体系 ================= */
-(function s8() {
+/* ================= S10 业务应用与评测体系 ================= */
+(function s10() {
   const s = p.addSlide();
-  header(s, 8, "业务应用层与评测体系", "最小业务闭环:线索查看 → 人工审核 → 数据沉淀;评测脚手架支撑 Prompt 迭代与版本回归");
+  header(s, 10, "业务应用层与评测体系", "最小业务闭环:线索查看 → 人工审核 → 数据沉淀;评测脚手架支撑 Prompt 迭代与版本回归");
 
   // 列 1:页面与 API
   const x1 = 0.45, w1 = 4.4;

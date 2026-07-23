@@ -1,45 +1,63 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>DriveIntent - 分析任务</title>
-  <style>
-    body { font-family: "Microsoft YaHei", sans-serif; margin: 2rem; }
-    section { margin-bottom: 2rem; }
-    table { border-collapse: collapse; }
-    td, th { border: 1px solid #ccc; padding: 4px 10px; }
-    button { padding: 4px 12px; }
-    #import-result, #start-result { color: #06c; margin-left: 8px; }
-  </style>
-</head>
-<body>
-  <h1>DriveIntent 线索获客</h1>
-  <p><a href="/leads">→ 线索列表</a></p>
+{% extends "base.html" %}
+{% block title %}DriveIntent - 分析任务{% endblock %}
+{% block main_class %}narrow{% endblock %}
 
-  <section>
-    <h2>1. 数据导入</h2>
-    <input type="file" id="file" accept=".xlsx">
-    <button onclick="doImport()">导入 Excel</button>
-    <span id="import-result"></span>
+{% block content %}
+  <section class="card">
+    <h2><span class="step">1</span>数据导入</h2>
+    <div class="row">
+      <input type="file" id="file" accept=".xlsx">
+      <button class="primary" onclick="doImport()">导入 Excel</button>
+    </div>
+    <p class="hint" id="import-result"></p>
   </section>
 
-  <section>
-    <h2>2. 启动分析</h2>
-    <button onclick="doStart()">启动分析</button>
-    <span id="start-result"></span>
+  <section class="card">
+    <h2><span class="step">2</span>启动分析</h2>
+    <div class="row">
+      <button class="primary" onclick="doStart()">启动分析</button>
+      <span class="hint" id="start-result"></span>
+    </div>
   </section>
 
-  <section>
-    <h2>3. 任务进度（每 3 秒刷新）</h2>
-    <div id="progress">加载中…</div>
+  <section class="card flush">
+    <div class="card-head">
+      <h2><span class="step">3</span>任务进度</h2>
+      <span class="hint">每 3 秒自动刷新</span>
+    </div>
+    <div class="table-wrap" id="progress">
+      <div class="empty">加载中…</div>
+    </div>
   </section>
 
-  <section>
-    <h2>4. 失败任务</h2>
-    <div id="failed-tasks">加载中…</div>
+  <section class="card flush">
+    <div class="card-head">
+      <h2><span class="step">4</span>失败任务</h2>
+    </div>
+    <div class="table-wrap" id="failed-tasks">
+      <div class="empty">加载中…</div>
+    </div>
   </section>
+{% endblock %}
 
+{% block extra_style %}
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    #import-result { margin: 10px 0 0; }
+    input[type=file] { font-size: 14px; }
+    input[type=file]::file-selector-button {
+      font: inherit; padding: 6px 14px; margin-right: 10px; cursor: pointer;
+      border: 1px solid var(--line); border-radius: 7px;
+      background: #fff; color: var(--ink); }
+{% endblock %}
+
+{% block script %}
 <script>
+const TASK_NAMES = {
+  video_context_analysis: '视频语境分析',
+  comment_lead_screening: '评论线索初筛',
+  user_lead_analysis: '用户线索分析',
+};
+function taskName(t) { return TASK_NAMES[t] || t; }
 async function doImport() {
   const f = document.getElementById('file').files[0];
   if (!f) { alert('请选择文件'); return; }
@@ -47,12 +65,14 @@ async function doImport() {
   fd.append('file', f);
   const r = await fetch('/api/import', {method: 'POST', body: fd});
   const d = await r.json();
+  const el = document.getElementById('import-result');
   if (!r.ok) {
-    document.getElementById('import-result').textContent =
-      `导入失败：${d.detail || '未知错误'}`;
+    el.className = 'hint bad-text';
+    el.textContent = `导入失败：${d.detail || '未知错误'}`;
     return;
   }
-  document.getElementById('import-result').textContent =
+  el.className = 'hint ok-text';
+  el.textContent =
     `视频新增 ${d.videos_new}，评论新增 ${d.comments_new}，` +
     `跳过 ${d.comments_skipped}，空评论 ${d.empty_comments}`;
 }
@@ -66,12 +86,21 @@ async function doStart() {
 async function refresh() {
   const r = await fetch('/api/analysis/progress');
   const d = await r.json();
+  const entries = Object.entries(d);
+  if (entries.length === 0) {
+    document.getElementById('progress').innerHTML =
+      '<div class="empty">暂无任务，请先导入数据并启动分析</div>';
+    return;
+  }
   let html = '<table><tr><th>任务类型</th><th>等待</th><th>执行中</th>' +
              '<th>成功</th><th>失败</th></tr>';
-  for (const [t, s] of Object.entries(d)) {
-    html += `<tr><td>${t}</td><td>${s.pending||0}</td>` +
-            `<td>${s.running||0}</td><td>${s.success||0}</td>` +
-            `<td>${s.failed||0}</td></tr>`;
+  for (const [t, s] of entries) {
+    const failed = s.failed || 0;
+    html += `<tr><td>${esc(taskName(t))}</td>` +
+            `<td class="num">${s.pending || 0}</td>` +
+            `<td class="num">${s.running || 0}</td>` +
+            `<td class="num ok-text">${s.success || 0}</td>` +
+            `<td class="num${failed ? ' bad-text' : ''}">${failed}</td></tr>`;
   }
   html += '</table>';
   document.getElementById('progress').innerHTML = html;
@@ -90,14 +119,17 @@ async function refreshFailed() {
   const r = await fetch('/api/tasks/failed');
   const list = await r.json();
   if (list.length === 0) {
-    document.getElementById('failed-tasks').innerHTML = '<p>暂无失败任务</p>';
+    document.getElementById('failed-tasks').innerHTML =
+      '<div class="empty">暂无失败任务</div>';
     return;
   }
   let html = '<table><tr><th>ID</th><th>类型</th><th>对象</th>' +
              '<th>错误</th><th>操作</th></tr>';
   for (const t of list) {
-    html += `<tr><td>${esc(t.id)}</td><td>${esc(t.task_type)}</td>` +
-            `<td>${esc(t.target_id)}</td><td>${esc(t.error || '')}</td>` +
+    html += `<tr><td class="num">${esc(t.id)}</td>` +
+            `<td>${esc(taskName(t.task_type))}</td>` +
+            `<td class="num">${esc(t.target_id)}</td>` +
+            `<td>${esc(t.error || '')}</td>` +
             `<td><button onclick="retryTask(${esc(t.id)})">重试</button></td></tr>`;
   }
   html += '</table>';
@@ -108,5 +140,4 @@ refreshFailed();
 setInterval(refresh, 3000);
 setInterval(refreshFailed, 3000);
 </script>
-</body>
-</html>
+{% endblock %}

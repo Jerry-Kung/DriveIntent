@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DriveIntent 线索导出 - {{ generated_at }}</title>
+  <style>
+    :root { --ink: #182230; --muted: #66738a; --line: #dce2ea;
+            --plate: #17509e; --ok: #177a45; --bad: #b3261e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #edf0f4; color: var(--ink);
+           font: 14px/1.65 "Segoe UI", "Microsoft YaHei", "PingFang SC",
+                sans-serif; }
+    .page { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .head { background: #161d27; color: #f5f7fa;
+            border-bottom: 3px solid var(--plate); }
+    .head-inner { max-width: 1400px; margin: 0 auto; padding: 14px 24px;
+                  display: flex; align-items: baseline; gap: 12px;
+                  flex-wrap: wrap; }
+    .mark { display: inline-flex; align-items: center; justify-content: center;
+            width: 36px; height: 26px; border-radius: 5px; align-self: center;
+            background: var(--plate); color: #fff; font-weight: 700;
+            font-size: 13px; letter-spacing: 1px;
+            box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.5); }
+    .head h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
+    .head .sub { color: #9aa7b8; font-size: 13px; }
+    .meta-card { background: #fff; border: 1px solid var(--line);
+                 border-radius: 10px; padding: 14px 20px;
+                 margin-bottom: 18px; display: flex; gap: 8px 28px;
+                 flex-wrap: wrap; font-size: 13.5px; }
+    .meta-card b { font-weight: 600; }
+    .meta-card .muted { color: var(--muted); }
+    .table-card { background: #fff; border: 1px solid var(--line);
+                  border-radius: 10px; overflow: hidden; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 13.5px;
+            table-layout: fixed; min-width: 1000px; }
+    td { overflow-wrap: anywhere; }
+    th { text-align: left; font-size: 12.5px; letter-spacing: .4px;
+         color: var(--muted); font-weight: 600; background: #f5f7fa;
+         white-space: nowrap; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 12px;
+             vertical-align: top; }
+    tbody tr:nth-child(even) td { background: #fafbfd; }
+    .num { font-variant-numeric: tabular-nums; overflow-wrap: normal;
+           white-space: nowrap; }
+    .ev + .ev { margin-top: 5px; padding-top: 5px;
+                border-top: 1px dashed var(--line); }
+    .sec { font-size: 16px; margin: 24px 0 12px; }
+    .grade { display: inline-flex; min-width: 26px; height: 22px;
+             padding: 0 7px; align-items: center; justify-content: center;
+             border-radius: 5px; font-weight: 700; font-size: 13px;
+             color: #fff; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45); }
+    .grade-H { background: #b3261e; }
+    .grade-A { background: #c96a0d; }
+    .grade-B { background: #17509e; }
+    .grade-C { background: #66738a; }
+    .pill { display: inline-block; padding: 1px 9px; border-radius: 999px;
+            font-size: 12.5px; border: 1px solid var(--line);
+            color: var(--muted); white-space: nowrap; }
+    .pill-valid { color: var(--ok); border-color: #bfdccb;
+                  background: #f0f8f3; }
+    .pill-invalid { color: var(--bad); border-color: #e5c4c2;
+                    background: #fbf1f0; }
+    .empty { color: var(--muted); text-align: center; padding: 28px; }
+    .foot { color: var(--muted); font-size: 12.5px; text-align: center;
+            padding: 18px 0 6px; }
+    @media print {
+      body { background: #fff; }
+      .table-card, .meta-card { border: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="head">
+    <div class="head-inner">
+      <span class="mark">DI</span>
+      <h1>DriveIntent 线索导出</h1>
+      <span class="sub">导出时间 {{ generated_at }}</span>
+    </div>
+  </header>
+  <div class="page">
+    <div class="meta-card">
+      <span><b>共 {{ rows | length }} 条线索</b></span>
+      {% for g in ["H", "A", "B", "C"] %}
+        {% if grade_counts.get(g) %}
+        <span><span class="grade grade-{{ g }}">{{ g }}</span>
+          × {{ grade_counts[g] }}</span>
+        {% endif %}
+      {% endfor %}
+      {% if invalid_rows %}
+      <span><span class="pill pill-invalid">无效</span>
+        × {{ invalid_rows | length }}</span>
+      {% endif %}
+      {% if screened_out %}
+      <span><span class="pill">初筛未通过</span>
+        × {{ screened_out | length }}</span>
+      {% endif %}
+      <span class="muted">筛选条件：{{ filter_text }}</span>
+    </div>
+
+    <div class="table-card">
+      {% if rows %}
+      <div class="table-wrap">
+        <table>
+          <colgroup>
+            <col style="width:8%"><col style="width:6%">
+            <col style="width:4%"><col style="width:10%">
+            <col style="width:19%"><col style="width:10%">
+            <col style="width:10%"><col style="width:6%">
+            <col style="width:16%"><col style="width:5%">
+            <col style="width:6%">
+          </colgroup>
+          <thead>
+            <tr><th>昵称</th><th>平台</th><th>等级</th><th>品牌/车型</th>
+                <th>摘要</th><th>核心需求</th><th>主要顾虑</th>
+                <th>购车时间</th><th>证据评论</th><th>置信度</th>
+                <th>审核状态</th></tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.nickname }}</td>
+              <td>{{ r.platform }}</td>
+              <td><span class="grade grade-{{ r.grade }}">{{ r.grade }}</span></td>
+              <td>{{ r.target_brands | join("/") }}
+                {{ r.target_models | join("/") }}</td>
+              <td>{{ r.summary }}</td>
+              <td>{{ r.core_needs | join("、") }}</td>
+              <td>{{ r.main_concerns | join("、") }}</td>
+              <td>{{ r.purchase_time or "" }}</td>
+              <td>
+                {% for e in r.evidence %}
+                <div class="ev">{{ e.content }}</div>
+                {% endfor %}
+              </td>
+              <td class="num">{{ "%.2f" | format(r.confidence or 0) }}</td>
+              <td><span class="pill pill-{{ r.review_status }}">{{ status_names.get(r.review_status, r.review_status) }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">当前筛选条件下没有线索</div>
+      {% endif %}
+    </div>
+
+    {% if invalid_rows %}
+    <h2 class="sec">无效评论（未纳入 HABC 分级，共 {{ invalid_rows | length }} 位用户）</h2>
+    <div class="table-card">
+      <div class="table-wrap">
+        <table>
+          <colgroup>
+            <col style="width:8%"><col style="width:6%">
+            <col style="width:6%"><col style="width:10%">
+            <col style="width:30%"><col style="width:34%">
+            <col style="width:6%">
+          </colgroup>
+          <thead>
+            <tr><th>昵称</th><th>平台</th><th>判定</th><th>品牌/车型</th>
+                <th>判定说明</th><th>原始评论</th><th>置信度</th></tr>
+          </thead>
+          <tbody>
+            {% for r in invalid_rows %}
+            <tr>
+              <td>{{ r.nickname }}</td>
+              <td>{{ r.platform }}</td>
+              <td>
+                {% if r.verdict == "invalid" %}
+                <span class="pill pill-invalid">无效</span>
+                {% else %}
+                <span class="pill">证据缺失</span>
+                {% endif %}
+              </td>
+              <td>{{ r.target_brands | join("/") }}
+                {{ r.target_models | join("/") }}</td>
+              <td>{{ r.summary }}</td>
+              <td>
+                {% for c in r.comments %}
+                <div class="ev">{{ c }}</div>
+                {% endfor %}
+              </td>
+              <td class="num">{{ "%.2f" | format(r.confidence or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if screened_out %}
+    {% set n_marketing = screened_out | selectattr("category", "equalto",
+                                                   "marketing") | list | length %}
+    {% set n_unrelated = screened_out | length - n_marketing %}
+    <h2 class="sec">未通过初筛的评论（共 {{ screened_out | length }} 条：
+      疑似水军 {{ n_marketing }} · 非购车相关 {{ n_unrelated }}）</h2>
+    <div class="table-card">
+      <div class="table-wrap">
+        <table>
+          <colgroup>
+            <col style="width:10%"><col style="width:6%">
+            <col style="width:9%"><col style="width:34%">
+            <col style="width:35%"><col style="width:6%">
+          </colgroup>
+          <thead>
+            <tr><th>昵称</th><th>平台</th><th>判定</th>
+                <th>评论内容</th><th>初筛理由</th><th>置信度</th></tr>
+          </thead>
+          <tbody>
+            {% for c in screened_out %}
+            <tr>
+              <td>{{ c.nickname }}</td>
+              <td>{{ c.platform }}</td>
+              <td>
+                {% if c.category == "marketing" %}
+                <span class="pill pill-invalid">疑似水军</span>
+                {% else %}
+                <span class="pill">非购车相关</span>
+                {% endif %}
+              </td>
+              <td>{{ c.content }}</td>
+              <td>{{ c.reason }}</td>
+              <td class="num">{{ "%.2f" | format(c.confidence or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    <p class="foot">由 DriveIntent 导出，数据截至 {{ generated_at }}</p>
+  </div>
+</body>
+</html>
