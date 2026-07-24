@@ -1,42 +1,8 @@
 services:
-  mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-driveintent}
-      MYSQL_DATABASE: ${DB_NAME:-driveintent}
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-driveintent}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   app:
     build: .
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: ${DB_PASSWORD:-driveintent}
-      DB_NAME: ${DB_NAME:-driveintent}
-      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-mock-model}
-      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
-      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-3}
-      API_KEYS: ${API_KEYS:-}
-      API_WORKER_ENABLED: ${API_WORKER_ENABLED:-true}
-      API_WORKER_CONCURRENCY: ${API_WORKER_CONCURRENCY:-3}
-      WORKER_ENABLED: ${WORKER_ENABLED:-true}
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
-      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-1.0}
-      COMMENT_BATCH_SIZE: ${COMMENT_BATCH_SIZE:-30}
+    env_file:
+      - .env
     ports:
       - "${APP_PORT:-8000}:8000"
     healthcheck:
@@ -44,6 +10,3 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-
-volumes:
-  mysql_data:

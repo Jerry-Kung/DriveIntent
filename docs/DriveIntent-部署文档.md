@@ -222,6 +222,14 @@ curl -X POST http://localhost:8000/api/v1/comment-screening \
 
 API 字段与轮询细节见 `docs/DriveIntent-V1-API对接文档.md`。
 
+也可使用一键冒烟测试脚本（修改脚本顶部配置区的 `BASE_URL` 与 `API_KEY` 后，在任意装有 Python 3.10+ 的机器上运行，无需安装依赖）：
+
+```bash
+python scripts/api_smoke_test.py
+```
+
+脚本依次验证健康检查、认证拦截、Agent 1 评论初筛、Agent 2 账号画像共 4 项，全部通过退出码为 0。
+
 ---
 
 ## 7. 生产加固建议
