@@ -38,7 +38,7 @@ services:
       WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-1.0}
       COMMENT_BATCH_SIZE: ${COMMENT_BATCH_SIZE:-30}
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
