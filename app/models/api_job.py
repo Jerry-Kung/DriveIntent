@@ -8,7 +8,7 @@ from app.db import Base
 
 class ApiJob(Base):
     __tablename__ = "api_job"
-    __table_args__ = (Index("ix_api_job_status", "status"),)
+    __table_args__ = (Index("ix_api_job_status_order", "status", "attempt_count", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_type: Mapped[str] = mapped_column(String(32))
