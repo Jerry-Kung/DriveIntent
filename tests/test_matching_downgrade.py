@@ -127,3 +127,19 @@ def test_disabled_skips():
 def test_none_config_skips():
     d = evaluate_video_context(_ctx(), None)
     assert d == DowngradeDecision()
+
+
+def test_category_fallback_use_case_match():
+    # vehicle_category 缺失，use_case 命中我方 use_case → 品类维度匹配
+    d = evaluate_video_context(
+        _ctx(price_range_min=360000, price_range_max=400000,
+             vehicle_category=None, use_case=["越野"]), _config())
+    assert d.downgrade_levels == 0
+
+
+def test_category_fallback_use_case_mismatch():
+    # vehicle_category 缺失，use_case 与我方无交集 → 品类不匹配计入
+    d = evaluate_video_context(
+        _ctx(vehicle_category=None, use_case=["商务"]), _config())
+    assert d.downgrade_levels == 2  # 价格也不匹配
+

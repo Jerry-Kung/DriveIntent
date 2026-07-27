@@ -38,14 +38,37 @@ def _match_names(brand: str | None, model: str | None,
     return "none"
 
 
-def _category_tokens(category: str | None, use_case: list[str]) -> set[str]:
-    tokens = {normalize(category)} if category else set()
-    tokens |= {normalize(u) for u in (use_case or [])}
-    tokens.discard("")
+def _expand_related(tokens: set[str]) -> set[str]:
+    """将 tokens 中的品类根据相近品类组扩展（例如 SUV 与越野互相视为匹配）。"""
     for group in _RELATED_CATEGORIES:
         if tokens & group:
             tokens |= group
     return tokens
+
+
+def _category_tokens(category: str | None, use_case: list[str]) -> set[str]:
+    """构造品类 tokens：主类别 + 用途列表，两者都经相近品类组扩展。"""
+    tokens = {normalize(category)} if category else set()
+    tokens |= {normalize(u) for u in (use_case or [])}
+    tokens.discard("")
+    return _expand_related(tokens)
+
+
+def _video_category_tokens(ctx: dict) -> set[str]:
+    """视频侧品类取词：主类别优先，缺失时回退 use_case（用户裁决的规则）。
+
+    取词规则（用户需求）：
+    1. vehicle_category 非空 → 仅取 vehicle_category（主类别优先）
+    2. vehicle_category 为空且 use_case 非空 → 回退取 use_case（兜底）
+    3. 两者都空 → 返回空集（该维度不计入不匹配）
+    """
+    cat = ctx.get("vehicle_category")
+    if cat:
+        return _expand_related({normalize(cat)})
+    use_case = ctx.get("use_case") or []
+    tokens = {normalize(u) for u in use_case if u}
+    tokens.discard("")
+    return _expand_related(tokens)
 
 
 def _price_matches(video_mid: float, om: OurModel) -> bool:
@@ -78,9 +101,7 @@ def evaluate_video_context(ctx: dict, config: OurModelsConfig | None,
             mismatches.append(
                 f"价位不匹配（视频车型约 {video_mid / 10000:.0f} 万元，"
                 f"与我方在售车型价位差距过大）")
-    # 仅使用 vehicle_category 作为视频的分类标记（不包含 use_case），
-    # 确保主分类是首要判别标准
-    video_tokens = _category_tokens(ctx.get("vehicle_category"), [])
+    video_tokens = _video_category_tokens(ctx)
     if video_tokens:
         matched = any(
             video_tokens & _category_tokens(om.vehicle_category, om.use_case)
