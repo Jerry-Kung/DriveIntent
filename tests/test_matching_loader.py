@@ -24,6 +24,9 @@ def test_normalize_lower_and_strip_spaces():
     assert normalize("方舟 X7") == "方舟x7"
     assert normalize("  Tank 400 ") == "tank400"
     assert normalize("") == ""
+    assert normalize("坦克-300") == "坦克300"
+    assert normalize("坦克·300") == "坦克300"
+    assert normalize("Model_Y") == "modely"
 
 
 def test_load_valid_config(tmp_path):

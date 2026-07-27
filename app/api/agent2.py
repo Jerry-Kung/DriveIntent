@@ -51,13 +51,13 @@ def _build_evidence(account: AccountObject, vision_text: str) -> dict:
     }
 
 
-async def analyze_account(executor, account: AccountObject,
-                          vision_text: str) -> UserLeadResult:
+async def analyze_account(executor, account: AccountObject, vision_text: str,
+                          our_models_summary: str) -> UserLeadResult:
     evidence = _build_evidence(account, vision_text)
     ctx = {
         "user_evidence_json": json.dumps(evidence, ensure_ascii=False),
         "grading_standard": GRADING_STANDARD,
-        "our_models_summary": build_our_models_summary(load_our_models()),
+        "our_models_summary": our_models_summary,
     }
     return await executor.run(USER_ANALYSIS_SKILL, ctx, UserLeadResult)
 
@@ -68,6 +68,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     results: list[dict] = []
     ts = now_iso()
     done = 0
+    # 我方车型摘要与账号无关，整批只加载/构建一次，避免每账号重复加载与告警刷屏
+    our_models_summary = build_our_models_summary(load_our_models())
     for account in request.accounts:
         has_comments = len(account.comment_history) > 0
         try:
@@ -78,7 +80,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 vision_text = await recognize_screenshot(
                     gateway, account.account_homepage_screenshot)
                 shot_available = bool(vision_text)
-                out = await analyze_account(executor, account, vision_text)
+                out = await analyze_account(
+                    executor, account, vision_text, our_models_summary)
             mapped = map_profile_result(
                 out, screenshot_available=shot_available,
                 has_comments=has_comments, processed_at=ts)

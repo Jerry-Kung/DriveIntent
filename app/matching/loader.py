@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from pathlib import Path
 
 from app.config import settings
@@ -10,10 +11,14 @@ logger = logging.getLogger(__name__)
 # 按 (路径, mtime) 缓存，文件更新后自动失效
 _cache: dict[str, tuple[float, OurModelsConfig]] = {}
 
+# 常见连接标点：中文顿号/间隔号、英文连字符、下划线、破折号等，归一化时一并剥离
+_PUNCT_RE = re.compile(r"[-·_—]")
+
 
 def normalize(name: str) -> str:
-    """车型/品牌名归一化：小写 + 去所有空白，用于别名匹配。"""
-    return "".join((name or "").lower().split())
+    """车型/品牌名归一化：小写 + 去所有空白 + 剥离常见连接标点，用于别名匹配。"""
+    stripped = _PUNCT_RE.sub("", (name or "").lower())
+    return "".join(stripped.split())
 
 
 def load_our_models(path: str | None = None) -> OurModelsConfig | None:

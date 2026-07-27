@@ -33,6 +33,7 @@ $comments_json
 - 疑似车主口吻但同时带引流/广告特征的，comment_actor 判为 marketing_account；
 - 旧字段 is_meaningful / is_suspected_marketing / is_automotive_related 仍需按原义输出，
   并与 comment_actor 保持一致（如 comment_actor=noise 时 is_meaningful=false）。
+- 一条评论同时符合多个异常类型时，comment_actor 按 off_topic > noise > bot_spam > marketing_account 的顺序取最先命中项；
 
 intent_signals 可选值：price_inquiry（询价）、trade_in（置换）、test_drive（试驾）、
 finance（金融政策）、store_visit（门店/交付）、comparison（竞品对比）、

@@ -121,7 +121,9 @@ async def test_v11_analyze_account_passes_summary(tmp_path, monkeypatch):
         account_uid="u1", account_name="用户",
         comment_history=[{"video_title": "对比", "comment_content": "纠结中",
                           "comment_time": "2026-07-19T14:23:00+08:00"}])
+    from app.matching.loader import build_our_models_summary, load_our_models
+    our_models_summary = build_our_models_summary(load_our_models())
     out = await analyze_account(
-        SkillExecutor(LLMGateway(provider)), account, "")
+        SkillExecutor(LLMGateway(provider)), account, "", our_models_summary)
     assert out.lead_grade == "A"
     assert "方舟X7" in sent[0][0]["content"]
