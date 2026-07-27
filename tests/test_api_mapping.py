@@ -72,3 +72,75 @@ def test_map_profile_no_comments():
     r = map_profile_result(out, screenshot_available=False, has_comments=False,
                            processed_at="t")
     assert r.has_value is False
+
+
+def test_resolve_filter_type_priority_actor_over_owner():
+    # 营销号 + 车主特征同时命中 → 归营销号
+    from app.api.mapping import resolve_filter_type
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                comment_actor="marketing_account",
+                                owner_status="existing_owner")
+    assert resolve_filter_type(item) == "marketing_account"
+
+
+def test_resolve_filter_type_owner_values():
+    from app.api.mapping import resolve_filter_type
+    existing = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                    owner_status="existing_owner")
+    ordered = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                   owner_status="ordered_owner")
+    assert resolve_filter_type(existing) == "existing_owner"
+    assert resolve_filter_type(ordered) == "ordered_owner"
+
+
+def test_resolve_filter_type_legacy_fallback():
+    # LLM 未输出新字段（默认值）时回退 V1.0 判定
+    from app.api.mapping import resolve_filter_type
+    marketing = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                     is_suspected_marketing=True)
+    noise = CommentScreeningItem(comment_id="c", is_meaningful=False)
+    ok = CommentScreeningItem(comment_id="c", is_meaningful=True)
+    assert resolve_filter_type(marketing) == "marketing_account"
+    assert resolve_filter_type(noise) == "noise"
+    assert resolve_filter_type(ok) == "genuine_user"
+
+
+def test_map_screening_owner_filtered_with_reason():
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                owner_status="existing_owner",
+                                intent_strength="low", reason="提车三个月")
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "existing_owner"
+    assert r.filter_reason == "已购车主评论"
+
+
+def test_map_screening_ordered_owner_reason():
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                owner_status="ordered_owner")
+    r = map_screening_item(item, "t")
+    assert r.filter_reason == "已下定车主评论"
+
+
+def test_map_screening_off_topic_reason():
+    item = CommentScreeningItem(comment_id="c", comment_actor="off_topic")
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_reason == "与汽车无关"
+
+
+def test_map_screening_exposes_intent_and_downgrade():
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                intent_strength="medium", reason="询价")
+    r = map_screening_item(item, "t", downgrade_applied=True,
+                           downgrade_reason="价位不匹配")
+    assert r.passed is True and r.filter_type == "genuine_user"
+    assert r.intent_strength == "medium"
+    assert r.downgrade_applied is True
+    assert r.downgrade_reason == "价位不匹配"
+
+
+def test_map_screening_defaults_no_downgrade():
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True)
+    r = map_screening_item(item, "t")
+    assert r.downgrade_applied is False and r.downgrade_reason is None

@@ -59,6 +59,11 @@ class ScreeningResult(BaseModel):
     comment_id: str
     passed: bool
     filter_reason: str | None = None
+    # V1.1 新增：评论内容类型 + 降级后意向强度 + 降级核查信息
+    filter_type: str = "genuine_user"
+    intent_strength: str = "none"
+    downgrade_applied: bool = False
+    downgrade_reason: str | None = None
     analysis: str = ""
     processed_at: str = ""
     error: str | None = None
