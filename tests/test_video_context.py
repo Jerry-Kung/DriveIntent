@@ -31,5 +31,5 @@ async def test_run_video_context_saves_result(session):
     assert r is not None
     assert r.result["brand"] == "坦克"
     assert r.result["model"] == "坦克300"
-    assert r.prompt_version == "v1"
+    assert r.prompt_version == "v2"
     assert r.model_name != ""

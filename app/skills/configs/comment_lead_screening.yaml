@@ -1,10 +1,10 @@
 skill_id: comment_lead_screening
-version: "1.0"
+version: "1.1"
 description: >
   结合视频语境批量判断评论是否具有真实购车价值，
-  识别无意义评论、营销内容和购车意向信号。
+  识别无意义评论、营销内容、水军、已购/已下定车主与购车意向信号。
 model:
   name: ""
   temperature: 0.1
-prompt_file: comment_lead_screening_v1.txt
-prompt_version: "v1"
+prompt_file: comment_lead_screening_v2.txt
+prompt_version: "v2"

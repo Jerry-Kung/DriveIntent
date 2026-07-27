@@ -94,3 +94,40 @@ async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
         await executor.run("demo", {"q": "hi"}, Out)
     # gateway 自身重试 3 次（max_retries=3），执行器层不应再叠加重试
     assert calls["n"] == 3
+
+
+def test_v11_video_context_config_uses_v2():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("video_context_analysis")
+    assert config.prompt_file == "video_context_analysis_v2.txt"
+    assert config.prompt_version == "v2"
+    assert config.version == "1.1"
+
+
+def test_v11_screening_config_uses_v2():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("comment_lead_screening")
+    assert config.prompt_file == "comment_lead_screening_v2.txt"
+    assert config.prompt_version == "v2"
+
+
+def test_v11_video_context_prompt_renders_with_new_fields():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("video_context_analysis")
+    text = render_prompt(config, {"video_json": "{}"})
+    assert "price_range_min" in text
+    assert "vehicle_category" in text
+    assert "use_case" in text
+
+
+def test_v11_screening_prompt_renders_with_owner_fields():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("comment_lead_screening")
+    text = render_prompt(config, {"video_context_json": "{}",
+                                  "comments_json": "[]",
+                                  "comment_count": "0"})
+    assert "owner_status" in text
+    assert "comment_actor" in text
+    assert "existing_owner" in text and "ordered_owner" in text
+    # 反例约束必须在 Prompt 中明确
+    assert "准备订" in text or "想下定" in text
