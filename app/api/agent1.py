@@ -3,6 +3,9 @@ import json
 from app.api.mapping import map_screening_item, now_iso
 from app.api.schemas import CommentObject, CommentScreeningRequest
 from app.config import settings
+from app.matching.downgrade import (DowngradeDecision, apply_downgrade,
+                                    evaluate_video_context)
+from app.matching.loader import load_our_models
 from app.schemas.skills import (CommentScreeningItem, CommentScreeningResult,
                                 VideoContextResult)
 from app.skills.executor import SkillExecutor
@@ -52,12 +55,20 @@ async def run_comment_screening(executor: SkillExecutor,
     for c in request.comments:
         groups.setdefault(c.video_title, []).append(c)
 
+    # V1.1：我方车型配置整单加载一次；每个视频语境评估一次降级决策
+    our_models = (load_our_models()
+                  if settings.intent_downgrade_enabled else None)
+    decisions: dict[str, DowngradeDecision] = {}
+
     size = settings.comment_batch_size
     items: dict[str, CommentScreeningItem] = {}
     errors: dict[str, str] = {}
     for title, comments in groups.items():
         if title not in ctx_cache:
             ctx_cache[title] = await _video_context(executor, comments[0])
+            decisions[title] = evaluate_video_context(
+                ctx_cache[title], our_models,
+                enabled=settings.intent_downgrade_enabled)
         ctx = ctx_cache[title]
         for i in range(0, len(comments), size):
             batch = comments[i:i + size]
@@ -78,10 +89,23 @@ async def run_comment_screening(executor: SkillExecutor,
     for c in request.comments:
         item = items.get(c.comment_id)
         if item is not None:
-            results.append(map_screening_item(item, ts).model_dump())
+            decision = decisions.get(c.video_title) or DowngradeDecision()
+            applied = False
+            if decision.downgrade_levels > 0:
+                new_strength = apply_downgrade(item.intent_strength,
+                                               decision.downgrade_levels)
+                applied = new_strength != item.intent_strength
+                item.intent_strength = new_strength
+            results.append(map_screening_item(
+                item, ts, downgrade_applied=applied,
+                downgrade_reason=decision.reason if applied else None,
+            ).model_dump())
         else:
             err = errors.get(c.comment_id, "筛选失败")
             results.append({"comment_id": c.comment_id, "passed": False,
-                            "filter_reason": None, "analysis": "",
+                            "filter_reason": None, "filter_type": None,
+                            "intent_strength": None,
+                            "downgrade_applied": False,
+                            "downgrade_reason": None, "analysis": "",
                             "processed_at": ts, "error": err})
     return {"results": results}

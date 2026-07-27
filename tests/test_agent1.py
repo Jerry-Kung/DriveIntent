@@ -42,3 +42,112 @@ async def test_screening_maps_results():
     assert results[0]["passed"] is True
     assert results[1]["passed"] is False
     assert results[1]["filter_reason"] == "无实质内容"
+
+
+_OUR_MODELS = {
+    "version": "1.0", "updated_at": "2026-07-27",
+    "models": [{
+        "model_id": "fz-x7", "brand": "方舟", "model_name": "方舟X7",
+        "aliases": ["X7"], "price_min": 350000, "price_max": 420000,
+        "vehicle_category": "越野", "powertrain": "PHEV",
+        "use_case": ["越野", "家用"], "key_features": ["四驱"],
+        "target_audience": "户外爱好者"}]}
+
+# 视频语境：10万纯电微型车（与我方38万越野车双维度不匹配）
+_CTX_MISMATCH = json.dumps({
+    "brand": "微光", "model": "微光mini",
+    "price_range_min": 90000, "price_range_max": 110000,
+    "vehicle_category": "微型车", "use_case": ["家用", "通勤"]})
+
+# 视频语境：我方车型
+_CTX_OURS = json.dumps({"brand": "方舟", "model": "方舟X7",
+                        "price_range_min": 350000,
+                        "price_range_max": 420000,
+                        "vehicle_category": "越野"})
+
+_SCREEN_HIGH = json.dumps({"items": [
+    {"comment_id": "cm_1", "is_meaningful": True,
+     "is_purchase_related": True, "intent_strength": "high",
+     "reason": "询问落地价"},
+    {"comment_id": "cm_2", "is_meaningful": False, "reason": "刷屏"}]})
+
+
+def _setup_config(tmp_path, monkeypatch, enabled=True):
+    from app.config import settings
+    p = tmp_path / "our_models.json"
+    p.write_text(json.dumps(_OUR_MODELS, ensure_ascii=False),
+                 encoding="utf-8")
+    monkeypatch.setattr(settings, "our_models_config_path", str(p))
+    monkeypatch.setattr(settings, "intent_downgrade_enabled", enabled)
+
+
+@pytest.mark.asyncio
+async def test_downgrade_applied_for_mismatched_video(tmp_path, monkeypatch):
+    _setup_config(tmp_path, monkeypatch)
+    out = await run_comment_screening(
+        _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
+    r = out["results"][0]
+    assert r["intent_strength"] == "low"        # high 降两级（价位+品类两维度不匹配）
+    assert r["downgrade_applied"] is True
+    assert "价位" in r["downgrade_reason"]
+    assert r["filter_type"] == "genuine_user"
+    assert r["passed"] is True                  # 降级不影响 passed
+
+
+@pytest.mark.asyncio
+async def test_no_downgrade_for_our_model_video(tmp_path, monkeypatch):
+    _setup_config(tmp_path, monkeypatch)
+    out = await run_comment_screening(
+        _executor(_CTX_OURS, _SCREEN_HIGH), _req())
+    r = out["results"][0]
+    assert r["intent_strength"] == "high"
+    assert r["downgrade_applied"] is False
+    assert r["downgrade_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_no_downgrade_when_disabled(tmp_path, monkeypatch):
+    _setup_config(tmp_path, monkeypatch, enabled=False)
+    out = await run_comment_screening(
+        _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
+    assert out["results"][0]["intent_strength"] == "high"
+    assert out["results"][0]["downgrade_applied"] is False
+
+
+@pytest.mark.asyncio
+async def test_no_downgrade_when_config_missing(tmp_path, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "our_models_config_path",
+                        str(tmp_path / "nope.json"))
+    monkeypatch.setattr(settings, "intent_downgrade_enabled", True)
+    out = await run_comment_screening(
+        _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
+    assert out["results"][0]["intent_strength"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_owner_comment_filtered(tmp_path, monkeypatch):
+    _setup_config(tmp_path, monkeypatch)
+    screening = json.dumps({"items": [
+        {"comment_id": "cm_1", "is_meaningful": True,
+         "owner_status": "ordered_owner", "intent_strength": "low",
+         "reason": "大定已下等提车"},
+        {"comment_id": "cm_2", "is_meaningful": False, "reason": "刷屏"}]})
+    out = await run_comment_screening(
+        _executor(_CTX_OURS, screening), _req())
+    r = out["results"][0]
+    assert r["passed"] is False
+    assert r["filter_type"] == "ordered_owner"
+    assert r["filter_reason"] == "已下定车主评论"
+
+
+@pytest.mark.asyncio
+async def test_failed_item_has_v11_keys(tmp_path, monkeypatch):
+    _setup_config(tmp_path, monkeypatch)
+    # 只给语境响应，筛选批次 Mock 无响应 → 整批失败
+    out = await run_comment_screening(_executor(_CTX_MISMATCH), _req())
+    r = out["results"][0]
+    assert r["error"]
+    assert r["filter_type"] is None
+    assert r["intent_strength"] is None
+    assert r["downgrade_applied"] is False
