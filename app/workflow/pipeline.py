@@ -3,6 +3,7 @@ import json
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.matching.loader import build_our_models_summary, load_our_models
 from app.models import AnalysisResult, Comment, Video
 from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
                                 VideoContextResult)
@@ -18,7 +19,7 @@ USER_ANALYSIS_SKILL = "user_lead_analysis"
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
     COMMENT_SCREENING_SKILL: "1.1",
-    USER_ANALYSIS_SKILL: "1.0",
+    USER_ANALYSIS_SKILL: "1.1",
 }
 
 
@@ -127,6 +128,7 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     context = {
         "user_evidence_json": json.dumps(evidence, ensure_ascii=False),
         "grading_standard": GRADING_STANDARD,
+        "our_models_summary": build_our_models_summary(load_our_models()),
     }
     out: UserLeadResult = await executor.run(
         USER_ANALYSIS_SKILL, context, UserLeadResult)

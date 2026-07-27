@@ -5,6 +5,7 @@ from app.api.mapping import map_profile_result, now_iso
 from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway
+from app.matching.loader import build_our_models_summary, load_our_models
 from app.schemas.skills import UserLeadResult
 from app.skills.executor import load_skill_config, render_prompt
 from app.skills.vision import build_image_message
@@ -56,6 +57,7 @@ async def analyze_account(executor, account: AccountObject,
     ctx = {
         "user_evidence_json": json.dumps(evidence, ensure_ascii=False),
         "grading_standard": GRADING_STANDARD,
+        "our_models_summary": build_our_models_summary(load_our_models()),
     }
     return await executor.run(USER_ANALYSIS_SKILL, ctx, UserLeadResult)
 

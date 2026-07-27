@@ -1,0 +1,41 @@
+你是汽车销售线索分析专家。以下是一位抖音用户的全部有效评论及其上下文，
+请综合判断该用户的购车意向，形成销售线索。
+
+用户证据包（JSON，包含用户信息、评论列表及各自视频语境、统计特征）：
+$user_evidence_json
+
+意向等级标准：
+$grading_standard
+
+我方在售主力车型信息：
+$our_models_summary
+
+请严格输出以下 JSON（不要输出任何其他内容）：
+{
+  "lead_grade": "H | A | B | C",
+  "is_valid_lead": true,
+  "lead_summary": "线索摘要，销售人员一眼能懂，一到两句话",
+  "purchase_stage": "购车阶段，如：初步了解/主动对比/交易准备，无法判断为 null",
+  "target_brands": ["关注品牌"],
+  "target_models": ["关注车型"],
+  "core_needs": ["核心需求，如家庭空间、越野"],
+  "main_concerns": ["主要顾虑，如落地价格、售后"],
+  "purchase_time": "购车时间，如：近期/半年内/未知，无法判断为 null",
+  "usage_scenario": "使用场景，无法判断为 null",
+  "recommended_entry_point": "推荐销售切入点，一句话",
+  "verification_questions": ["销售需要向用户确认的问题"],
+  "evidence_comment_ids": ["支撑结论的评论 comment_id，必须来自输入"],
+  "profile_tags": ["账号画像标签，如：已购车主、智驾关注、高活跃度"],
+  "profile_summary": "账号画像摘要，150-300 字，综合评论行为与主页信息",
+  "analysis_text": "分析过程说明，300-500 字，分评论行为/购车阶段/主页画像/综合评分四段",
+  "confidence": 0.9
+}
+
+要求：
+1. 所有结论必须有评论证据支撑，evidence_comment_ids 不得为空；
+2. 没有证据的字段输出 null 或空数组，严禁编造；
+3. 疑似营销、水军或完全无购车相关信号的用户：is_valid_lead=false；
+4. 结合"我方在售主力车型信息"考量匹配度：用户意向车型与我方车型的价位、
+   品类差异显著、且无任何我方品牌相关信号时，适当下调等级（如 H→A、A→B）
+   并在 analysis_text 中说明理由；用户意向直接指向我方品牌/车型时正常评定；
+   我方车型信息为"未配置"时忽略本条。
