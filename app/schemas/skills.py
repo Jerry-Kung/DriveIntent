@@ -12,6 +12,12 @@ class VideoContextResult(BaseModel):
     competitor_models: list[str] = []
     commercial_context: str | None = None
     analysis_notes: str | None = None
+    # V1.1：车型客观属性，用于我方车型匹配与意向降级（LLM 常识估算，缺失为 None）
+    price_range_min: int | None = None
+    price_range_max: int | None = None
+    vehicle_category: str | None = None
+    powertrain: str | None = None
+    use_case: list[str] = []
 
 
 class CommentScreeningItem(BaseModel):
@@ -25,6 +31,10 @@ class CommentScreeningItem(BaseModel):
     target_model: str | None = None
     intent_strength: Literal["none", "low", "medium", "high"] = "none"
     reason: str = ""
+    # V1.1：车主状态与评论主体类型（两者正交，由代码层合成 filter_type）
+    owner_status: Literal["none", "existing_owner", "ordered_owner"] = "none"
+    comment_actor: Literal["genuine_user", "bot_spam", "marketing_account",
+                           "noise", "off_topic"] = "genuine_user"
     confidence: float = 0.0
 
 
