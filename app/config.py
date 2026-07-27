@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     api_worker_enabled: bool = True
     api_worker_concurrency: int = 3
 
+    # V1.1 我方车型匹配与降级
+    our_models_config_path: str = "config/our_models.json"
+    intent_downgrade_enabled: bool = True
+
     @property
     def api_keys_list(self) -> list[str]:
         return [k.strip() for k in self.api_keys.split(",") if k.strip()]

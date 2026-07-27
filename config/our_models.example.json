@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-07-27",
+  "models": [
+    {
+      "model_id": "example-x7",
+      "brand": "示例品牌",
+      "model_name": "示例X7",
+      "aliases": ["X7", "示例 x7"],
+      "price_min": 350000,
+      "price_max": 420000,
+      "vehicle_category": "越野",
+      "powertrain": "PHEV",
+      "use_case": ["越野", "家用"],
+      "key_features": ["四驱", "大空间", "智驾"],
+      "target_audience": "30-45岁户外爱好者"
+    }
+  ]
+}
