@@ -117,6 +117,31 @@ API Key 由服务方分配。认证失败返回 `401`。
 | `processed_at` | String | 处理时间戳 |
 | `error` | String \| null | 该条处理失败时的错误信息（正常为 null；有值时 `passed` 恒为 false，整单 status 为 `partial`） |
 
+### V1.1 新增：初筛输出扩展字段
+
+自 V1.1 起，`comment-screening` 每条结果新增以下字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `filter_type` | string | 评论内容类型，所有评论均返回。枚举见下表；处理失败的条目为 `null` |
+| `intent_strength` | string | 意向强度（降级后终值）：`none` / `low` / `medium` / `high`；处理失败为 `null` |
+| `downgrade_applied` | bool | 该评论的意向强度是否因"视频车型与我方在售车型不匹配"被降级 |
+| `downgrade_reason` | string \| null | 降级原因说明，仅 `downgrade_applied=true` 时有值 |
+
+`filter_type` 枚举与 `filter_reason` 对应关系：
+
+| filter_type | 含义 | filter_reason | passed |
+|---|---|---|---|
+| `genuine_user` | 真实普通用户 | `null` | `true` |
+| `existing_owner` | 已购车主 | `已购车主评论` | `false` |
+| `ordered_owner` | 已下大定车主 | `已下定车主评论` | `false` |
+| `bot_spam` | 批量刷屏水军 | `批量刷屏水军` | `false` |
+| `marketing_account` | 营销号/广告引流 | `广告/引流类评论` | `false` |
+| `noise` | 无实质内容 | `无实质内容` | `false` |
+| `off_topic` | 与汽车无关 | `与汽车无关` | `false` |
+
+说明：`filter_reason` 在 V1.0 四个枚举基础上新增 `已购车主评论` / `已下定车主评论` / `与汽车无关` 三个值。
+
 ---
 
 ## 5. Agent 2：账号画像精筛
