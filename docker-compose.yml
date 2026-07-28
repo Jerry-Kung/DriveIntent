@@ -3,6 +3,9 @@ services:
     build: .
     env_file:
       - .env
+    volumes:
+      # V1.1 我方车型配置：宿主机生成 config/our_models.json 后重启生效
+      - ./config:/app/config:ro
     ports:
       - "${APP_PORT:-8000}:8000"
     healthcheck:
