@@ -67,12 +67,25 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v11_user_analysis_config_uses_v2():
+def test_v12_user_analysis_config_uses_v3():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v2.txt"
-    assert config.prompt_version == "v2"
-    assert config.version == "1.1"
+    assert config.prompt_file == "user_lead_analysis_v3.txt"
+    assert config.prompt_version == "v3"
+    assert config.version == "1.2"
+
+
+def test_v12_user_analysis_prompt_has_profile_rules():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    assert "方舟X7" in text          # 我方车型摘要仍注入
+    assert "baseline_grade" in text  # 审计字段输出要求
+    assert "homepage_profile" in text  # 画像注入位置说明
+    assert "只上调" in text          # 画像上调规则
 
 
 def test_v11_user_analysis_prompt_has_our_models_var():

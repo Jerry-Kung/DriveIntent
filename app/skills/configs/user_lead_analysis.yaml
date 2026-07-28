@@ -1,10 +1,10 @@
 skill_id: user_lead_analysis
-version: "1.1"
+version: "1.2"
 description: >
   基于用户全部有效评论、视频语境与统计特征，综合判断购车意向，
   输出 H/A/B/C 等级、购车画像与销售建议；评级时考量与我方在售车型的匹配度。
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_analysis_v2.txt
-prompt_version: "v2"
+prompt_file: user_lead_analysis_v3.txt
+prompt_version: "v3"
