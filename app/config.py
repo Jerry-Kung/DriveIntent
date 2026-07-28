@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     db_user: str = "root"
     db_password: str = ""
     db_name: str = "driveintent"
+    # 连接池容量需覆盖 worker_concurrency + api_worker_concurrency
+    # + Web 请求与 LLM 日志会话的并发峰值
+    db_pool_size: int = 15
+    db_max_overflow: int = 15
+    db_pool_timeout: int = 30
 
     llm_provider: str = "mock"          # openai_compat | mock
     llm_base_url: str = ""

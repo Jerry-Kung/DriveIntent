@@ -39,6 +39,8 @@ async def run_video_context(session: Session, executor: SkillExecutor,
             "preset_model": video.preset_model or "",
         }, ensure_ascii=False),
     }
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个 LLM 调用
+    session.commit()
     out: VideoContextResult = await executor.run(
         VIDEO_CONTEXT_SKILL, context, VideoContextResult)
     config = load_skill_config(VIDEO_CONTEXT_SKILL)
@@ -92,6 +94,9 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
         return
     resolved_ids = [c.id for c in comments]
     expected = {str(c.id) for c in comments}
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个重试/递归
+    # 期间的所有 LLM 调用
+    session.commit()
 
     for _ in range(settings.llm_max_retries):
         result = await _call_screening(executor, ctx_row.result, comments)
@@ -130,6 +135,8 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
         "grading_standard": GRADING_STANDARD,
         "our_models_summary": build_our_models_summary(load_our_models()),
     }
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个 LLM 调用
+    session.commit()
     out: UserLeadResult = await executor.run(
         USER_ANALYSIS_SKILL, context, UserLeadResult)
     config = load_skill_config(USER_ANALYSIS_SKILL)
