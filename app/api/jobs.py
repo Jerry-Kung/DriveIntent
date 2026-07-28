@@ -21,9 +21,11 @@ def get_job(session: Session, job_id: str) -> ApiJob | None:
 
 
 def claim_next_job(session: Session) -> ApiJob | None:
+    # FOR UPDATE SKIP LOCKED（需 MySQL 8.0+）：并发 worker 跳过已被
+    # 他人锁定的行，避免重复认领同一作业；SQLite 会忽略该子句
     job = (session.query(ApiJob).filter_by(status="pending")
            .order_by(ApiJob.attempt_count.asc(), ApiJob.created_at.asc())
-           .first())
+           .with_for_update(skip_locked=True).first())
     if job is None:
         return None
     job.status = "running"
