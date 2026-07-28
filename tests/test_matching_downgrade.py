@@ -1,4 +1,4 @@
-from app.matching.downgrade import (DowngradeDecision, apply_downgrade,
+from app.matching.downgrade import (DowngradeDecision,
                                     evaluate_video_context)
 from app.matching.models import OurModel, OurModelsConfig
 
@@ -19,19 +19,6 @@ def _ctx(**overrides) -> dict:
                 vehicle_category="微型车", use_case=["家用", "通勤"])
     base.update(overrides)
     return base
-
-
-def test_apply_downgrade_ladder():
-    assert apply_downgrade("high", 1) == "medium"
-    assert apply_downgrade("high", 2) == "low"
-    assert apply_downgrade("medium", 2) == "none"
-    assert apply_downgrade("low", 1) == "none"
-
-
-def test_apply_downgrade_floor_and_noop():
-    assert apply_downgrade("none", 2) == "none"      # 不越界
-    assert apply_downgrade("high", 0) == "high"      # 0 级不动
-    assert apply_downgrade("unknown", 1) == "unknown"  # 非法值原样返回
 
 
 def test_our_model_matched_by_name():

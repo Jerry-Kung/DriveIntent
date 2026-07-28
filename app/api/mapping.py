@@ -17,17 +17,6 @@ def now_iso() -> str:
     return datetime.now(_TZ).isoformat(timespec="seconds")
 
 
-# filter_type → 对外 filter_reason 文案（genuine_user 无 reason）
-_FILTER_REASON = {
-    "existing_owner": "已购车主评论",
-    "ordered_owner": "已下定车主评论",
-    "bot_spam": "批量刷屏水军",
-    "marketing_account": "广告/引流类评论",
-    "noise": "无实质内容",
-    "off_topic": "与汽车无关",
-}
-
-
 def resolve_filter_type(item: CommentScreeningItem) -> str:
     """合成 filter_type。优先级：actor 异常类 > 车主状态 > 兼容回退 > 真实用户。
 
@@ -47,17 +36,18 @@ def resolve_filter_type(item: CommentScreeningItem) -> str:
 
 
 def map_screening_item(item: CommentScreeningItem, processed_at: str, *,
-                       downgrade_applied: bool = False,
-                       downgrade_reason: str | None = None) -> ScreeningResult:
+                       mismatch_reason: str | None = None) -> ScreeningResult:
     filter_type = resolve_filter_type(item)
-    passed = filter_type == "genuine_user"
-    reason = None if passed else _FILTER_REASON[filter_type]
+    reason = None
+    # V1.1.1：车型严重不匹配的降级只施加于真实用户（其余类型已被过滤），
+    # 以 filter_type=model_mismatch 标识，不匹配原因写入 filter_reason
+    if filter_type == "genuine_user" and mismatch_reason:
+        filter_type = "model_mismatch"
+        reason = mismatch_reason
+    passed = filter_type in ("genuine_user", "model_mismatch")
     analysis = item.reason or ("通过初筛。" if passed else "未通过初筛。")
     return ScreeningResult(comment_id=item.comment_id, passed=passed,
                            filter_reason=reason, filter_type=filter_type,
-                           intent_strength=item.intent_strength,
-                           downgrade_applied=downgrade_applied,
-                           downgrade_reason=downgrade_reason,
                            analysis=analysis, processed_at=processed_at)
 
 

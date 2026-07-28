@@ -20,7 +20,8 @@ def test_map_screening_marketing_filtered():
                                 is_suspected_marketing=True, reason="含微信号引流")
     r = map_screening_item(item, "t")
     assert r.passed is False
-    assert r.filter_reason == "广告/引流类评论"
+    assert r.filter_type == "marketing_account"
+    assert r.filter_reason is None  # V1.1.1：枚举自解释，无需补充说明
 
 
 def test_map_screening_meaningless_filtered():
@@ -28,7 +29,8 @@ def test_map_screening_meaningless_filtered():
                                 reason="纯数字刷屏")
     r = map_screening_item(item, "t")
     assert r.passed is False
-    assert r.filter_reason == "无实质内容"
+    assert r.filter_type == "noise"
+    assert r.filter_reason is None
 
 
 def test_map_profile_high_to_gao():
@@ -105,42 +107,56 @@ def test_resolve_filter_type_legacy_fallback():
     assert resolve_filter_type(ok) == "genuine_user"
 
 
-def test_map_screening_owner_filtered_with_reason():
+def test_map_screening_owner_filtered_no_reason_text():
     item = CommentScreeningItem(comment_id="c", is_meaningful=True,
                                 owner_status="existing_owner",
                                 intent_strength="low", reason="提车三个月")
     r = map_screening_item(item, "t")
     assert r.passed is False
     assert r.filter_type == "existing_owner"
-    assert r.filter_reason == "已购车主评论"
+    assert r.filter_reason is None
+    assert "提车三个月" in r.analysis
 
 
-def test_map_screening_ordered_owner_reason():
+def test_map_screening_ordered_owner():
     item = CommentScreeningItem(comment_id="c", is_meaningful=True,
                                 owner_status="ordered_owner")
     r = map_screening_item(item, "t")
-    assert r.filter_reason == "已下定车主评论"
+    assert r.passed is False and r.filter_type == "ordered_owner"
 
 
-def test_map_screening_off_topic_reason():
+def test_map_screening_off_topic():
     item = CommentScreeningItem(comment_id="c", comment_actor="off_topic")
     r = map_screening_item(item, "t")
-    assert r.passed is False
-    assert r.filter_reason == "与汽车无关"
+    assert r.passed is False and r.filter_type == "off_topic"
 
 
-def test_map_screening_exposes_intent_and_downgrade():
+def test_map_screening_model_mismatch_marks_and_passes():
+    # V1.1.1：车型严重不匹配 → filter_type=model_mismatch，原因入 filter_reason，
+    # 仍视为通过初筛（降级是标记而非过滤）
     item = CommentScreeningItem(comment_id="c", is_meaningful=True,
                                 intent_strength="medium", reason="询价")
-    r = map_screening_item(item, "t", downgrade_applied=True,
-                           downgrade_reason="价位不匹配")
-    assert r.passed is True and r.filter_type == "genuine_user"
-    assert r.intent_strength == "medium"
-    assert r.downgrade_applied is True
-    assert r.downgrade_reason == "价位不匹配"
+    r = map_screening_item(item, "t", mismatch_reason="价位不匹配")
+    assert r.passed is True
+    assert r.filter_type == "model_mismatch"
+    assert r.filter_reason == "价位不匹配"
 
 
-def test_map_screening_defaults_no_downgrade():
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True)
-    r = map_screening_item(item, "t")
-    assert r.downgrade_applied is False and r.downgrade_reason is None
+def test_map_screening_mismatch_not_applied_to_filtered():
+    # 已被过滤的评论不再叠加 model_mismatch 标记
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                comment_actor="bot_spam")
+    r = map_screening_item(item, "t", mismatch_reason="价位不匹配")
+    assert r.passed is False
+    assert r.filter_type == "bot_spam"
+    assert r.filter_reason is None
+
+
+def test_map_screening_no_legacy_fields():
+    # V1.1.1：intent_strength / downgrade_applied / downgrade_reason 不再输出
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                intent_strength="high")
+    d = map_screening_item(item, "t").model_dump()
+    assert "intent_strength" not in d
+    assert "downgrade_applied" not in d
+    assert "downgrade_reason" not in d

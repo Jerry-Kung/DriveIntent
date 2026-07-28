@@ -41,7 +41,8 @@ async def test_screening_maps_results():
     assert [r["comment_id"] for r in results] == ["cm_1", "cm_2"]
     assert results[0]["passed"] is True
     assert results[1]["passed"] is False
-    assert results[1]["filter_reason"] == "无实质内容"
+    assert results[1]["filter_type"] == "noise"
+    assert results[1]["filter_reason"] is None
 
 
 _OUR_MODELS = {
@@ -82,47 +83,45 @@ def _setup_config(tmp_path, monkeypatch, enabled=True):
 
 
 @pytest.mark.asyncio
-async def test_downgrade_applied_for_mismatched_video(tmp_path, monkeypatch):
+async def test_mismatch_marked_for_mismatched_video(tmp_path, monkeypatch):
     _setup_config(tmp_path, monkeypatch)
     out = await run_comment_screening(
         _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
     r = out["results"][0]
-    assert r["intent_strength"] == "low"        # high 降两级（价位+品类两维度不匹配）
-    assert r["downgrade_applied"] is True
-    assert "价位" in r["downgrade_reason"]
-    assert r["filter_type"] == "genuine_user"
-    assert r["passed"] is True                  # 降级不影响 passed
+    assert r["filter_type"] == "model_mismatch"  # 价位+品类两维度不匹配
+    assert "价位" in r["filter_reason"]
+    assert r["passed"] is True                   # 降级标记不影响 passed
+    assert "intent_strength" not in r            # V1.1.1 不再输出
+    assert "downgrade_applied" not in r
 
 
 @pytest.mark.asyncio
-async def test_no_downgrade_for_our_model_video(tmp_path, monkeypatch):
+async def test_no_mismatch_for_our_model_video(tmp_path, monkeypatch):
     _setup_config(tmp_path, monkeypatch)
     out = await run_comment_screening(
         _executor(_CTX_OURS, _SCREEN_HIGH), _req())
     r = out["results"][0]
-    assert r["intent_strength"] == "high"
-    assert r["downgrade_applied"] is False
-    assert r["downgrade_reason"] is None
+    assert r["filter_type"] == "genuine_user"
+    assert r["filter_reason"] is None
 
 
 @pytest.mark.asyncio
-async def test_no_downgrade_when_disabled(tmp_path, monkeypatch):
+async def test_no_mismatch_when_disabled(tmp_path, monkeypatch):
     _setup_config(tmp_path, monkeypatch, enabled=False)
     out = await run_comment_screening(
         _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
-    assert out["results"][0]["intent_strength"] == "high"
-    assert out["results"][0]["downgrade_applied"] is False
+    assert out["results"][0]["filter_type"] == "genuine_user"
 
 
 @pytest.mark.asyncio
-async def test_no_downgrade_when_config_missing(tmp_path, monkeypatch):
+async def test_no_mismatch_when_config_missing(tmp_path, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "our_models_config_path",
                         str(tmp_path / "nope.json"))
     monkeypatch.setattr(settings, "intent_downgrade_enabled", True)
     out = await run_comment_screening(
         _executor(_CTX_MISMATCH, _SCREEN_HIGH), _req())
-    assert out["results"][0]["intent_strength"] == "high"
+    assert out["results"][0]["filter_type"] == "genuine_user"
 
 
 @pytest.mark.asyncio
@@ -138,16 +137,16 @@ async def test_owner_comment_filtered(tmp_path, monkeypatch):
     r = out["results"][0]
     assert r["passed"] is False
     assert r["filter_type"] == "ordered_owner"
-    assert r["filter_reason"] == "已下定车主评论"
+    assert r["filter_reason"] is None
 
 
 @pytest.mark.asyncio
-async def test_failed_item_has_v11_keys(tmp_path, monkeypatch):
+async def test_failed_item_keys(tmp_path, monkeypatch):
     _setup_config(tmp_path, monkeypatch)
     # 只给语境响应，筛选批次 Mock 无响应 → 整批失败
     out = await run_comment_screening(_executor(_CTX_MISMATCH), _req())
     r = out["results"][0]
     assert r["error"]
     assert r["filter_type"] is None
-    assert r["intent_strength"] is None
-    assert r["downgrade_applied"] is False
+    assert r["filter_reason"] is None
+    assert "intent_strength" not in r

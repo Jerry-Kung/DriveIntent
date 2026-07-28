@@ -3,8 +3,6 @@ from pydantic import BaseModel
 from app.matching.loader import normalize
 from app.matching.models import OurModel, OurModelsConfig
 
-# 意向强度阶梯，降级沿阶梯向下
-_LADDER = ["none", "low", "medium", "high"]
 # 视频车型价位中值 / 我方车型价位中值 落在此区间视为价格匹配
 PRICE_RATIO_MIN = 0.7
 PRICE_RATIO_MAX = 1.4
@@ -16,12 +14,6 @@ class DowngradeDecision(BaseModel):
     is_our_model: bool = False
     downgrade_levels: int = 0
     reason: str | None = None
-
-
-def apply_downgrade(strength: str, levels: int) -> str:
-    if levels <= 0 or strength not in _LADDER:
-        return strength
-    return _LADDER[max(0, _LADDER.index(strength) - levels)]
 
 
 def _match_names(brand: str | None, model: str | None,

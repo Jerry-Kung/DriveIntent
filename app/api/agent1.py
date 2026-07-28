@@ -3,8 +3,7 @@ import json
 from app.api.mapping import map_screening_item, now_iso
 from app.api.schemas import CommentObject, CommentScreeningRequest
 from app.config import settings
-from app.matching.downgrade import (DowngradeDecision, apply_downgrade,
-                                    evaluate_video_context)
+from app.matching.downgrade import DowngradeDecision, evaluate_video_context
 from app.matching.loader import load_our_models
 from app.schemas.skills import (CommentScreeningItem, CommentScreeningResult,
                                 VideoContextResult)
@@ -90,22 +89,13 @@ async def run_comment_screening(executor: SkillExecutor,
         item = items.get(c.comment_id)
         if item is not None:
             decision = decisions.get(c.video_title) or DowngradeDecision()
-            applied = False
-            if decision.downgrade_levels > 0:
-                new_strength = apply_downgrade(item.intent_strength,
-                                               decision.downgrade_levels)
-                applied = new_strength != item.intent_strength
-                item.intent_strength = new_strength
+            mismatch = (decision.reason
+                        if decision.downgrade_levels > 0 else None)
             results.append(map_screening_item(
-                item, ts, downgrade_applied=applied,
-                downgrade_reason=decision.reason if applied else None,
-            ).model_dump())
+                item, ts, mismatch_reason=mismatch).model_dump())
         else:
             err = errors.get(c.comment_id, "筛选失败")
             results.append({"comment_id": c.comment_id, "passed": False,
                             "filter_reason": None, "filter_type": None,
-                            "intent_strength": None,
-                            "downgrade_applied": False,
-                            "downgrade_reason": None, "analysis": "",
-                            "processed_at": ts, "error": err})
+                            "analysis": "", "processed_at": ts, "error": err})
     return {"results": results}

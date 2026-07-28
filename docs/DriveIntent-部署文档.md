@@ -1,6 +1,6 @@
 # DriveIntent 部署文档
 
-**版本**：V1.0　**更新日期**：2026-07-24　**服务默认端口**：8000
+**版本**：V1.1　**更新日期**：2026-07-28　**服务默认端口**：8000
 
 本文档描述如何在一台**全新服务器**上从零启动 DriveIntent。提供两种方式：
 
@@ -55,6 +55,9 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `DB_USER` | `root` | 数据库用户 |
 | `DB_PASSWORD` | `driveintent` | 数据库密码，**生产务必修改** |
 | `DB_NAME` | `driveintent` | 数据库名，启动时若不存在需已由 DB 创建（Compose 自动创建） |
+| `DB_POOL_SIZE` | `15` | 数据库连接池常驻连接数 |
+| `DB_MAX_OVERFLOW` | `15` | 连接池溢出上限；并发连接上限 = `DB_POOL_SIZE + DB_MAX_OVERFLOW`，需覆盖两类 Worker 并发与 Web 请求峰值 |
+| `DB_POOL_TIMEOUT` | `30` | 等待可用连接的超时（秒），超时报 `QueuePool limit reached` |
 | `LLM_PROVIDER` | `mock` | `mock`（本地假数据，联调用）或 `openai_compat`（真实模型） |
 | `LLM_BASE_URL` | 空 | OpenAI 兼容接口地址，**须含 `/v1` 前缀**，如 `https://api.example.com/v1` |
 | `LLM_API_KEY` | 空 | 模型服务的 API Key |
@@ -68,6 +71,8 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `WORKER_CONCURRENCY` | `3` | 业务 Worker 并发数 |
 | `WORKER_POLL_INTERVAL` | `1.0` | Worker 轮询任务间隔（秒） |
 | `COMMENT_BATCH_SIZE` | `30` | 评论批处理条数 |
+| `OUR_MODELS_CONFIG_PATH` | `config/our_models.json` | **V1.1** 我方在售车型配置文件路径（生成方式见 3.2 节） |
+| `INTENT_DOWNGRADE_ENABLED` | `true` | **V1.1** 非我方车型意向降级总开关；`false` 完全跳过匹配与降级（快速回退用） |
 
 **上线前至少修改三项**：`DB_PASSWORD`、`API_KEYS`、以及真实模型的 `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
 
@@ -89,6 +94,41 @@ python scripts/generate_api_key.py --write --replace
 ```
 
 写入后**重启服务生效**（Compose：`docker compose up -d` 会重建 app 容器读取新变量；裸机：重启 uvicorn 进程）。生成的 key 需通过安全渠道分发给 API 调用方，格式形如 `di_xxxxxxxx...`。
+
+### 3.2 生成我方车型配置（V1.1）
+
+V1.1 的两项能力依赖"我方在售车型"配置：Agent 1 对非我方车型视频下的评论做**意向降级**，Agent 2 评级时**考量品牌匹配度**。配置文件默认为 `config/our_models.json`（**不入库**，每套部署自行生成；结构模板见 `config/our_models.example.json`）。
+
+**未配置时服务正常运行**：启动仅记录一条警告日志，降级与匹配度考量自动跳过，API 字段契约不变（不会产生 `filter_type="model_mismatch"` 分类）。
+
+#### 生成步骤
+
+用转换脚本把自由文本的车型描述（车型介绍、配置单等）交给 LLM 抽取为结构化配置。脚本复用 `.env` 中的 LLM 配置，**需 `LLM_PROVIDER=openai_compat` 与可用的模型服务**，在装有项目依赖的机器上运行（服务器或本地开发机均可）：
+
+```bash
+# 1. 准备车型描述文本（一款或多款均可）
+#    示例内容："方舟X7，中大型插混SUV，售价28.98-35.98万，主打家用越野兼顾……"
+
+# 2. 预览抽取结果（只打印不写盘，人工核对结构与价格）
+python scripts/build_our_models.py --input 车型描述.txt --dry-run
+
+# 3. 确认无误后写入（默认 config/our_models.json，可用 --output 指定）
+python scripts/build_our_models.py --input 车型描述.txt
+```
+
+脚本行为与注意事项：
+
+- 输出经 Pydantic 校验，抽取/校验失败会**报错退出、不写坏文件**；目标文件已存在时先备份为 `our_models.json.bak`。
+- 文本中缺失的价格等关键信息不会编造（留空），**价格单位为元**。
+- **人工核对 `aliases` 别名列表**：别名是评论/视频车型匹配的关键，应尽量丰富（简称、口语叫法、英文名）；但需有区分度，避免"X7"这类通用短名误命中其他品牌同名车型。
+
+#### 部署生效
+
+配置在应用启动时加载，替换文件后需重启：
+
+- **Docker Compose**：compose 已将宿主机 `./config` 目录只读挂载进容器（`./config:/app/config:ro`）。把生成的 `our_models.json` 放到服务器项目目录的 `config/` 下，执行 `docker compose restart app`。
+- **裸机**：确认文件位于 `OUR_MODELS_CONFIG_PATH` 指向的路径（相对服务工作目录），重启 uvicorn 进程。
+
 
 ---
 
@@ -253,3 +293,5 @@ python scripts/api_smoke_test.py
 | 提交任务后一直 `pending` | 确认 `WORKER_ENABLED` / `API_WORKER_ENABLED` 为 `true`，查看日志是否有「Worker 已启动」 |
 | 真实模型调用失败/超时 | 检查 `LLM_BASE_URL` 是否含 `/v1`、`LLM_API_KEY` 是否有效、网络是否可达；必要时调大 `LLM_TIMEOUT_SECONDS` |
 | 主页截图识别不生效 | 确认 `LLM_MODEL` 支持图像输入，且 `LLM_PROVIDER=openai_compat` |
+| 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
+| 日志出现 `QueuePool limit ... reached` | 并发连接需求超过连接池上限；调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`，或调低两类 Worker 并发与 `LLM_TIMEOUT_SECONDS` |

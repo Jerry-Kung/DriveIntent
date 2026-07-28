@@ -1,6 +1,6 @@
-# DriveIntent V1.0 API 对接文档
+# DriveIntent V1 API 对接文档
 
-**版本**：1.0　**更新日期**：2026-07-23　**服务默认端口**：8000
+**版本**：1.1.1　**更新日期**：2026-07-28　**服务默认端口**：8000
 
 DriveIntent 提供两个异步分析接口：**评论价值初筛**（Agent 1）与**账号画像精筛**（Agent 2）。两者均采用「提交任务 → 轮询结果」模式，适配长耗时的 LLM 分析场景。
 
@@ -112,35 +112,31 @@ API Key 由服务方分配。认证失败返回 `401`。
 |------|------|------|
 | `comment_id` | String | 对应输入的评论 ID |
 | `passed` | Boolean | 是否通过初筛 |
-| `filter_reason` | String \| null | 未通过原因（仅 `passed=false`），枚举：`"广告/引流类评论"` / `"无实质内容"` |
+| `filter_type` | String \| null | 评论分类结果（枚举见下表）；该条处理失败时为 `null` |
+| `filter_reason` | String \| null | `filter_type` 的**纯文本补充说明**，仅在枚举本身不足以说明时有值（当前仅 `model_mismatch` 时携带具体不匹配原因） |
 | `analysis` | String | AI 分析说明 |
 | `processed_at` | String | 处理时间戳 |
 | `error` | String \| null | 该条处理失败时的错误信息（正常为 null；有值时 `passed` 恒为 false，整单 status 为 `partial`） |
 
-### V1.1 新增：初筛输出扩展字段
+`filter_type` 枚举与 `passed` 对应关系：
 
-自 V1.1 起，`comment-screening` 每条结果新增以下字段：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `filter_type` | string | 评论内容类型，所有评论均返回。枚举见下表；处理失败的条目为 `null` |
-| `intent_strength` | string | 意向强度（降级后终值）：`none` / `low` / `medium` / `high`；处理失败为 `null` |
-| `downgrade_applied` | bool | 该评论的意向强度是否因"视频车型与我方在售车型不匹配"被降级 |
-| `downgrade_reason` | string \| null | 降级原因说明，仅 `downgrade_applied=true` 时有值 |
-
-`filter_type` 枚举与 `filter_reason` 对应关系：
-
-| filter_type | 含义 | filter_reason | passed |
+| filter_type | 含义 | passed | filter_reason |
 |---|---|---|---|
-| `genuine_user` | 真实普通用户 | `null` | `true` |
-| `existing_owner` | 已购车主 | `已购车主评论` | `false` |
-| `ordered_owner` | 已下大定车主 | `已下定车主评论` | `false` |
-| `bot_spam` | 批量刷屏水军 | `批量刷屏水军` | `false` |
-| `marketing_account` | 营销号/广告引流 | `广告/引流类评论` | `false` |
-| `noise` | 无实质内容 | `无实质内容` | `false` |
-| `off_topic` | 与汽车无关 | `与汽车无关` | `false` |
+| `genuine_user` | 真实普通用户 | `true` | `null` |
+| `model_mismatch` | 意向车型与我方在售车型严重不匹配 | `true` | 具体不匹配原因文本，如"价位不匹配（视频车型约 10 万元，与我方在售车型价位差距过大）" |
+| `existing_owner` | 已购车主 | `false` | `null` |
+| `ordered_owner` | 已下大定车主 | `false` | `null` |
+| `bot_spam` | 批量刷屏水军 | `false` | `null` |
+| `marketing_account` | 营销号/广告引流 | `false` | `null` |
+| `noise` | 无实质内容 | `false` | `null` |
+| `off_topic` | 与汽车无关 | `false` | `null` |
 
-说明：`filter_reason` 在 V1.0 实际输出的两个枚举（`广告/引流类评论`、`无实质内容`）基础上，V1.1 新增 `已购车主评论` / `已下定车主评论` / `批量刷屏水军` / `与汽车无关` 四个值。
+**V1.1.1 契约变更说明**（相对 V1.1）：
+- `filter_reason` 不再是 `filter_type` 的固定枚举文案，改为纯文本补充说明；做分支判断请依据 `filter_type`。
+- 移除 `intent_strength` / `downgrade_applied` / `downgrade_reason` 三个字段：降级事实由 `filter_type = "model_mismatch"` 标识，降级原因并入 `filter_reason`。
+- `model_mismatch` 的评论 `passed` 仍为 `true`——降级是提示性标记而非过滤，是否降权由对接方决定。
+
+**降级功能的服务端前提**：意向降级依赖服务端配置的"我方在售车型"清单（`config/our_models.json`，由服务方维护，见部署文档）。服务端未配置该文件或关闭降级开关时，不会产生 `model_mismatch` 分类——对接方无需感知配置状态，字段契约不变。
 
 ---
 
@@ -200,6 +196,10 @@ API Key 由服务方分配。认证失败返回 `401`。
 | `high` | 高 | 85-100 | 明确购车意向 / 决策末期 / 已购车主（换购潜力） |
 | `medium` | 中 | 70-84 | 正在对比车型 / 决策中期 |
 | `low` | 低 | 50-69 | 初步了解 / 观望 / 决策前期 |
+
+### V1.1 行为变化：评级考量我方车型匹配度
+
+自 V1.1 起，账号画像分析会注入服务端配置的"我方在售车型"摘要（品牌、车型、价位、品类、目标人群），模型评定意向等级与价值分数时，会把**该用户与我方车型的匹配度**作为考量维度之一，并体现在 `analysis` / `profile_summary` 文本中。**输出字段结构不变**，对接方无需改动解析逻辑；服务端未配置车型清单时行为与 V1.0 一致。
 
 ---
 

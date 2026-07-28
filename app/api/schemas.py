@@ -58,12 +58,10 @@ class ProfileAnalysisRequest(BaseModel):
 class ScreeningResult(BaseModel):
     comment_id: str
     passed: bool
+    # V1.1.1：filter_reason 为 filter_type 的纯文本补充说明，
+    # 仅在必要时有值（当前仅 filter_type=model_mismatch 时携带不匹配原因）
     filter_reason: str | None = None
-    # V1.1 新增：评论内容类型 + 降级后意向强度 + 降级核查信息
     filter_type: str = "genuine_user"
-    intent_strength: str = "none"
-    downgrade_applied: bool = False
-    downgrade_reason: str | None = None
     analysis: str = ""
     processed_at: str = ""
     error: str | None = None
