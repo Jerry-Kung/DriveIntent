@@ -215,3 +215,50 @@ def test_v12_build_evidence_non_json_falls_back_to_text():
                           "comment_time": "2026-07-19T14:23:00+08:00"}])
     ev = _build_evidence(account, "这是一段无结构的识图文本")
     assert ev["user"]["homepage_profile"] == "这是一段无结构的识图文本"
+
+
+@pytest.mark.asyncio
+async def test_v12_profile_upgrade_maps_final_grade():
+    """基线 B 经画像上调为 A：对外等级按最终 lead_grade=A 映射，审计字段不泄漏。"""
+    profile = json.dumps({"nickname": "应许", "auto_relevance": "大量自驾游内容",
+                          "interest_tags": ["自驾爱好者"]}, ensure_ascii=False)
+    lead = json.dumps({
+        "baseline_grade": "B", "profile_adjustment": "upgraded",
+        "adjustment_reason": "主页大量自驾游内容",
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "自驾意向",
+        "evidence_comment_ids": ["u1:0"], "confidence": 0.85,
+        "profile_tags": ["自驾爱好者"], "profile_summary": "画像", "analysis_text": "分析"})
+    executor, gateway = _executor_and_gateway(profile, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u1", "account_name": "应许",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "越野", "comment_content": "在看这款",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 5}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_level_code"] == "medium"  # A→中
+    assert 85 <= r["value_score"] <= 100 or r["value_score"] >= 70
+    # 审计字段不进对外契约
+    assert "baseline_grade" not in r
+    assert "profile_adjustment" not in r
+
+
+@pytest.mark.asyncio
+async def test_v12_profile_baseline_c_not_upgraded():
+    """基线 C 且 LLM 未上调：最终 lead_grade=C，映射为 has_value=false（C 不在对外区间）。"""
+    profile = json.dumps({"auto_relevance": "无明显汽车相关内容"}, ensure_ascii=False)
+    lead = json.dumps({
+        "baseline_grade": "C", "profile_adjustment": "none",
+        "adjustment_reason": None, "lead_grade": "C", "is_valid_lead": False,
+        "evidence_comment_ids": ["u4:0"], "confidence": 0.6,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(profile, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u4", "account_name": "用户",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "吐槽", "comment_content": "这车真丑",
+                             "comment_time": "2026-07-19T14:23:00+08:00"}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is False  # C 级 lead_grade 不在 _GRADE_MAP 对外区间
