@@ -175,3 +175,43 @@ def test_v12_user_lead_result_has_audit_fields():
     assert r2.baseline_grade == "B"
     assert r2.profile_adjustment == "upgraded"
     assert r2.adjustment_reason == "主页大量自驾游内容"
+
+
+def test_v12_build_evidence_injects_structured_profile():
+    import json as _json
+    from app.api.agent2 import _build_evidence
+    from app.api.schemas import AccountObject
+    account = AccountObject(
+        account_uid="u1", account_name="用户",
+        comment_history=[{"video_title": "对比", "comment_content": "纠结",
+                          "comment_time": "2026-07-19T14:23:00+08:00"}])
+    profile_json = _json.dumps({"nickname": "应许",
+                                "auto_relevance": "大量自驾游内容",
+                                "interest_tags": ["自驾爱好者"]},
+                               ensure_ascii=False)
+    ev = _build_evidence(account, profile_json)
+    hp = ev["user"]["homepage_profile"]
+    assert isinstance(hp, dict)
+    assert hp["auto_relevance"] == "大量自驾游内容"
+
+
+def test_v12_build_evidence_empty_profile_placeholder():
+    from app.api.agent2 import _build_evidence
+    from app.api.schemas import AccountObject
+    account = AccountObject(
+        account_uid="u2", account_name="用户",
+        comment_history=[{"video_title": "x", "comment_content": "y",
+                          "comment_time": "2026-07-19T14:23:00+08:00"}])
+    ev = _build_evidence(account, "")
+    assert ev["user"]["homepage_profile"] == "（无主页截图）"
+
+
+def test_v12_build_evidence_non_json_falls_back_to_text():
+    from app.api.agent2 import _build_evidence
+    from app.api.schemas import AccountObject
+    account = AccountObject(
+        account_uid="u3", account_name="用户",
+        comment_history=[{"video_title": "x", "comment_content": "y",
+                          "comment_time": "2026-07-19T14:23:00+08:00"}])
+    ev = _build_evidence(account, "这是一段无结构的识图文本")
+    assert ev["user"]["homepage_profile"] == "这是一段无结构的识图文本"

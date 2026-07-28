@@ -7,7 +7,7 @@ from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.schemas.skills import UserLeadResult
-from app.skills.executor import load_skill_config, render_prompt
+from app.skills.executor import extract_json, load_skill_config, render_prompt
 from app.skills.vision import build_image_message
 from app.workflow.pipeline import GRADING_STANDARD, USER_ANALYSIS_SKILL
 
@@ -34,6 +34,14 @@ async def recognize_screenshot(gateway: LLMGateway, screenshot: str) -> str:
         return ""
 
 
+def _parse_profile(vision_text: str):
+    """把识图文本解析为结构化画像对象；解析失败回退为原始文本。"""
+    try:
+        return extract_json(vision_text)
+    except ValueError:
+        return vision_text
+
+
 def _build_evidence(account: AccountObject, vision_text: str) -> dict:
     comments = [{
         "comment_id": f"{account.account_uid}:{idx}",
@@ -42,10 +50,11 @@ def _build_evidence(account: AccountObject, vision_text: str) -> dict:
         "video_title": h.video_title,
         "comment_like_count": h.comment_like_count,
     } for idx, h in enumerate(account.comment_history)]
+    profile = _parse_profile(vision_text) if vision_text else "（无主页截图）"
     return {
         "user": {"nickname": account.account_name,
                  "douyin_id": account.account_douyin_id,
-                 "homepage_description": vision_text or "（无主页截图）"},
+                 "homepage_profile": profile},
         "comments": comments,
         "statistics": {"valid_comment_count": len(comments)},
     }
