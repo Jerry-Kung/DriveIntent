@@ -127,3 +127,22 @@ async def test_v11_analyze_account_passes_summary(tmp_path, monkeypatch):
         SkillExecutor(LLMGateway(provider)), account, "", our_models_summary)
     assert out.lead_grade == "A"
     assert "方舟X7" in sent[0][0]["content"]
+
+
+def test_v12_image_recognition_config_uses_v2():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("image_recognition")
+    assert config.prompt_file == "image_recognition_v2.txt"
+    assert config.prompt_version == "v2"
+    assert config.version == "2.0"
+
+
+def test_v12_image_recognition_prompt_asks_structured_json():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("image_recognition")
+    text = render_prompt(config, {})
+    # 结构化画像的关键字段与硬约束
+    assert "auto_relevance" in text
+    assert "raw_description" in text
+    assert "content_themes" in text
+    assert "JSON" in text
