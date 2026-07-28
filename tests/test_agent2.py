@@ -146,3 +146,19 @@ def test_v12_image_recognition_prompt_asks_structured_json():
     assert "raw_description" in text
     assert "content_themes" in text
     assert "JSON" in text
+
+
+def test_v12_user_lead_result_has_audit_fields():
+    from app.schemas.skills import UserLeadResult
+    # 默认值：未提供审计字段时不报错
+    r = UserLeadResult(lead_grade="B")
+    assert r.baseline_grade is None
+    assert r.profile_adjustment == "none"
+    assert r.adjustment_reason is None
+    # 显式提供上调审计
+    r2 = UserLeadResult(lead_grade="A", baseline_grade="B",
+                        profile_adjustment="upgraded",
+                        adjustment_reason="主页大量自驾游内容")
+    assert r2.baseline_grade == "B"
+    assert r2.profile_adjustment == "upgraded"
+    assert r2.adjustment_reason == "主页大量自驾游内容"

@@ -59,4 +59,9 @@ class UserLeadResult(BaseModel):
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis_text: str = ""
+    # V1.2：画像上调审计字段（内部用，不进对外 API 契约）。
+    # lead_grade 为最终等级；baseline_grade 为仅评论证据的基线等级。
+    baseline_grade: str | None = None
+    profile_adjustment: str = "none"  # none | upgraded
+    adjustment_reason: str | None = None
     confidence: float = 0.0
