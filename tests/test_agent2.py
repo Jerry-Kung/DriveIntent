@@ -312,3 +312,80 @@ def test_v121_pipeline_skill_version_bumped():
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
+
+
+@pytest.mark.asyncio
+async def test_v121_unrelated_model_downgrade_maps_final_grade():
+    """意向五菱宏光基线 H、unrelated 降两级至 B：对外按最终 lead_grade=B 映射，
+    匹配审计字段落库不泄漏。"""
+    profile = json.dumps({"auto_relevance": "无明显汽车相关内容"},
+                         ensure_ascii=False)
+    lead = json.dumps({
+        "baseline_grade": "H", "model_match_level": "unrelated",
+        "match_adjustment": -2,
+        "match_reason": "意向五菱宏光约4-6万微面，与我方30-70万越野SUV价位品类均差距显著",
+        "profile_adjustment": "none", "adjustment_reason": None,
+        "lead_grade": "B", "is_valid_lead": True,
+        "lead_summary": "五菱宏光强意向，与我方在售车型无关",
+        "evidence_comment_ids": ["u5:0"], "confidence": 0.85,
+        "profile_tags": [], "profile_summary": "p",
+        "analysis_text": "含匹配度段的五段分析"})
+    executor, gateway = _executor_and_gateway(profile, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u5", "account_name": "用户",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "宏光评测",
+                             "comment_content": "问下宏光落地多少，这周想去订",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 3}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_level_code"] == "low"  # B→低，而非基线 H→高
+    # 匹配审计字段不进对外契约
+    assert "model_match_level" not in r
+    assert "match_adjustment" not in r
+    assert "match_reason" not in r
+
+
+@pytest.mark.asyncio
+async def test_v121_our_model_upgrade_maps_final_grade():
+    """意向直指我方 M817、基线 A 上调至 H：对外按最终 lead_grade=H 映射。"""
+    profile = json.dumps({"auto_relevance": "无明显汽车相关内容"},
+                         ensure_ascii=False)
+    lead = json.dumps({
+        "baseline_grade": "A", "model_match_level": "our_model",
+        "match_adjustment": 1,
+        "match_reason": "意向直指我方在售车型猛士M817，且有明确询价行为",
+        "profile_adjustment": "none", "adjustment_reason": None,
+        "lead_grade": "H", "is_valid_lead": True,
+        "lead_summary": "M817 意向用户",
+        "evidence_comment_ids": ["u6:0"], "confidence": 0.9,
+        "profile_tags": [], "profile_summary": "p",
+        "analysis_text": "五段分析"})
+    executor, gateway = _executor_and_gateway(profile, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u6", "account_name": "用户",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "M817 试驾",
+                             "comment_content": "M817 落地价多少？想去店里看看",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 8}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_level_code"] == "high"
+    assert 85 <= r["value_score"] <= 100
+
+
+def test_v121_unconfigured_summary_renders_unknown_rule():
+    """our_models.json 未配置：摘要为占位文本，v4 提示词渲染正常且含 unknown 跳过规则。"""
+    from app.matching.loader import build_our_models_summary
+    from app.skills.executor import load_skill_config, render_prompt
+    summary = build_our_models_summary(None)
+    assert "未配置" in summary
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": summary})
+    assert "未配置" in text
+    assert "unknown" in text
