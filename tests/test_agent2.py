@@ -67,12 +67,12 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v12_user_analysis_config_uses_v3():
+def test_v121_user_analysis_config_uses_v4():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v3.txt"
-    assert config.prompt_version == "v3"
-    assert config.version == "1.2"
+    assert config.prompt_file == "user_lead_analysis_v4.txt"
+    assert config.prompt_version == "v4"
+    assert config.version == "1.2.1"
 
 
 def test_v12_user_analysis_prompt_has_profile_rules():
@@ -285,3 +285,21 @@ def test_v121_user_lead_result_rejects_invalid_match_level():
     from app.schemas.skills import UserLeadResult
     with _pytest.raises(ValidationError):
         UserLeadResult(lead_grade="B", model_match_level="not_a_level")
+
+
+def test_v121_user_analysis_prompt_has_match_rules():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    assert "方舟X7" in text                # 我方车型摘要仍注入
+    assert "model_match_level" in text     # 匹配度审计字段输出要求
+    assert "match_adjustment" in text
+    assert "unrelated" in text             # 四档档位名
+    assert "降两级" in text                # unrelated 调整幅度
+    assert "匹配度" in text                # analysis_text 五段之一
+    assert "baseline_grade" in text        # V1.2 画像规则保留
+    assert "只上调" in text                # V1.2 画像规则保留
+    assert "homepage_profile" in text      # V1.2 画像注入说明保留
