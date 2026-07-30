@@ -262,3 +262,26 @@ async def test_v12_profile_baseline_c_not_upgraded():
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
     assert r["has_value"] is False  # C 级 lead_grade 不在 _GRADE_MAP 对外区间
+
+
+def test_v121_user_lead_result_has_match_audit_fields():
+    from app.schemas.skills import UserLeadResult
+    # 默认值：LLM 未输出匹配度字段时向后兼容不报错
+    r = UserLeadResult(lead_grade="B")
+    assert r.model_match_level == "unknown"
+    assert r.match_adjustment == 0
+    assert r.match_reason is None
+    # 显式提供降级审计
+    r2 = UserLeadResult(lead_grade="B", baseline_grade="H",
+                        model_match_level="unrelated", match_adjustment=-2,
+                        match_reason="意向五菱宏光约4-6万微面，与我方30-70万越野SUV品类价位均差距显著")
+    assert r2.model_match_level == "unrelated"
+    assert r2.match_adjustment == -2
+
+
+def test_v121_user_lead_result_rejects_invalid_match_level():
+    import pytest as _pytest
+    from pydantic import ValidationError
+    from app.schemas.skills import UserLeadResult
+    with _pytest.raises(ValidationError):
+        UserLeadResult(lead_grade="B", model_match_level="not_a_level")

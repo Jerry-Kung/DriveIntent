@@ -64,4 +64,11 @@ class UserLeadResult(BaseModel):
     baseline_grade: str | None = None
     profile_adjustment: str = "none"  # none | upgraded
     adjustment_reason: str | None = None
+    # V1.2.1：在售车型匹配度审计字段（内部用，不进对外 API 契约）。
+    # 审计链条：baseline_grade →(match_adjustment)→ 中间等级
+    #          →(profile_adjustment)→ lead_grade
+    model_match_level: Literal["our_model", "similar", "partial",
+                               "unrelated", "unknown"] = "unknown"
+    match_adjustment: int = 0  # -2 ~ +1，负为降级、正为上调
+    match_reason: str | None = None
     confidence: float = 0.0
