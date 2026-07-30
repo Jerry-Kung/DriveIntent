@@ -303,3 +303,12 @@ def test_v121_user_analysis_prompt_has_match_rules():
     assert "baseline_grade" in text        # V1.2 画像规则保留
     assert "只上调" in text                # V1.2 画像规则保留
     assert "homepage_profile" in text      # V1.2 画像注入说明保留
+
+
+def test_v121_pipeline_skill_version_bumped():
+    from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
+    from app.skills.executor import load_skill_config
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.2.1"
+    # 流水线版本与 skill 配置版本保持一致，防止只改一处
+    assert (load_skill_config(USER_ANALYSIS_SKILL).version
+            == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
