@@ -1,6 +1,6 @@
 # DriveIntent V1 API 对接文档
 
-**版本**：1.2　**更新日期**：2026-07-28　**服务默认端口**：8000
+**版本**：1.2.1　**更新日期**：2026-07-28　**服务默认端口**：8000
 
 DriveIntent 提供两个异步分析接口：**评论价值初筛**（Agent 1）与**账号画像精筛**（Agent 2）。两者均采用「提交任务 → 轮询结果」模式，适配长耗时的 LLM 分析场景。
 
@@ -185,7 +185,7 @@ API Key 由服务方分配。认证失败返回 `401`。
 | `value_score` | Integer \| null | 价值评分 0-100（仅 `has_value=true`） |
 | `profile_tags` | Array\<String\> | 账号画像标签，如 `["已购车主", "智驾关注"]` |
 | `profile_summary` | String | 账号画像摘要（150-300 字） |
-| `analysis` | String | AI 分析过程说明（300-500 字） |
+| `analysis` | String | AI 分析过程说明（400-600 字） |
 | `processed_at` | String | 处理时间戳 |
 | `error` | String \| null | 该条处理失败时的错误信息（正常为 null） |
 
