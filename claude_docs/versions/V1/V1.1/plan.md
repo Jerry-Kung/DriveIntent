@@ -1,5 +1,7 @@
 # DriveIntent V1.1 实现计划
 
+> 版本：V1.1 | 日期：2026-07-27
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 V1.0 基础上实现 filter_type 评论分类、已购/已大定车主过滤、非我方车型意向降级与主力车型配置能力。

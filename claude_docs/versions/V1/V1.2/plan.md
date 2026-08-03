@@ -1,5 +1,7 @@
 # DriveIntent V1.2 实现计划
 
+> 版本：V1.2 | 日期：2026-07-28
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把用户抖音主页截图正式纳入 Agent2 分析流程——识图阶段建立结构化用户画像，评级阶段依据画像对高质量线索（基线 B/A）做有限上调。

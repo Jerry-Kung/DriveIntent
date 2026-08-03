@@ -1,5 +1,7 @@
 # DriveIntent V1.3 实现计划
 
+> 版本：V1.3 | 日期：2026-08-03
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现 V1.3——评论/账号两级"是否车主"（`is_car_owner`）与"购车意向"（`has_purchase_intent`）独立标签、初筛通过规则重构（新增 `no_purchase_intent`、取消 `model_mismatch`/`existing_owner`/`ordered_owner`）、视频语境降级模块下线、非本人意向识别 bugfix。

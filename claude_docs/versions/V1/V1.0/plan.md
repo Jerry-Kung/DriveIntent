@@ -1,5 +1,7 @@
 # DriveIntent V1 实现计划
 
+> 版本：V1.0 | 日期：2026-07-23
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 DriveIntent 升级为可 docker compose 独立部署的后端微服务，对外提供两个异步 API（评论初筛 / 账号画像精筛），保留 V0 的 8000 测试链路。

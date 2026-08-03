@@ -1,5 +1,7 @@
 # DriveIntent V0（MVP）实施计划
 
+> 版本：V0 | 日期：2026-07-20
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现 DriveIntent V0 端到端闭环：导入抖音评论 Excel 数据 → 三个 LLM Skill 分析 → 产出 H/A/B/C 销售线索 → 页面查看/审核/导出。
