@@ -111,3 +111,35 @@ def test_valid_screenings_latest_false_wins(session):
     # Since latest (purchase=False) wins, user should NOT be in candidate list
     ids = candidate_user_ids(session)
     assert ids == []
+
+
+def _screening_v13(cid, *, owner=False, intent=True, positive=False):
+    return {"comment_id": str(cid), "is_meaningful": True,
+            "is_automotive_related": True, "is_purchase_related": intent,
+            "is_suspected_marketing": False,
+            "comment_actor": "genuine_user", "is_car_owner": owner,
+            "has_purchase_intent": intent, "positive_attitude": positive,
+            "target_brand": "坦克", "target_model": "坦克300",
+            "intent_strength": "high" if intent else "none",
+            "reason": "r", "confidence": 0.9}
+
+
+def test_candidate_users_v13_owner_without_intent_excluded(session):
+    v = Video(platform="douyin", external_id="v1", title="t")
+    u1 = PlatformUser(platform="douyin", external_id="u1", nickname="车主")
+    u2 = PlatformUser(platform="douyin", external_id="u2", nickname="兴趣用户")
+    session.add_all([v, u1, u2]); session.flush()
+    c1 = Comment(platform="douyin", external_id="c1", video_id=v.id,
+                 user_id=u1.id, content="我这台油耗8个")
+    c2 = Comment(platform="douyin", external_id="c2", video_id=v.id,
+                 user_id=u2.id, content="内饰真好看")
+    session.add_all([c1, c2]); session.flush()
+    sv = SKILL_VERSIONS[COMMENT_SCREENING_SKILL]
+    # u1：车主无意向 → 不入候选；u2：非车主积极信号 → 入候选
+    save_result(session, target_type="comment", target_id=str(c1.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening_v13(c1.id, owner=True, intent=False))
+    save_result(session, target_type="comment", target_id=str(c2.id),
+                skill_id=COMMENT_SCREENING_SKILL, skill_version=sv,
+                result=_screening_v13(c2.id, intent=False, positive=True))
+    assert candidate_user_ids(session) == [u2.id]

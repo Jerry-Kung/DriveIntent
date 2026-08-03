@@ -166,3 +166,54 @@ def test_map_screening_no_legacy_fields():
     assert "intent_strength" not in d
     assert "downgrade_applied" not in d
     assert "downgrade_reason" not in d
+
+
+def test_screening_dict_passed_v13_rules():
+    from app.api.mapping import screening_dict_passed
+    # 新数据（含 has_purchase_intent 键）走 V1.3 规则
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": True, "is_car_owner": True}) is True
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": True,
+         "positive_attitude": True}) is False   # 无意向车主
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": False,
+         "positive_attitude": True}) is True    # 非车主积极信号
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "marketing_account",
+         "has_purchase_intent": True}) is False  # actor 异常优先
+
+
+def test_screening_dict_passed_legacy_fallback():
+    from app.api.mapping import screening_dict_passed
+    # 历史数据（无 has_purchase_intent 键）回退旧口径
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": True,
+         "is_suspected_marketing": False}) is True
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": False}) is False
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": True,
+         "is_suspected_marketing": True}) is False
+
+
+def test_screened_out_category():
+    from app.api.mapping import screened_out_category
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "marketing_account"}) == "marketing"
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": True}) == "no_intent"
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": False,
+         "has_purchase_intent": False}) == "unrelated"
+    # 历史数据回退
+    assert screened_out_category(
+        {"comment_id": "c", "is_suspected_marketing": True}) == "marketing"
+    assert screened_out_category(
+        {"comment_id": "c", "is_purchase_related": False}) == "unrelated"

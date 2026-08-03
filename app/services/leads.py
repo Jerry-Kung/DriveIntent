@@ -3,6 +3,7 @@ import io
 
 from sqlalchemy.orm import Session
 
+from app.api.mapping import screened_out_category, screening_dict_passed
 from app.models import AnalysisResult, Comment, Lead, PlatformUser
 from app.schemas.skills import UserLeadResult
 
@@ -74,19 +75,14 @@ def _latest_screenings(session: Session) -> dict[int, dict]:
     return latest
 
 
-def _screening_passed(res: dict) -> bool:
-    return bool(res.get("is_purchase_related")
-                and not res.get("is_suspected_marketing"))
-
-
 def query_screened_out_comments(session: Session) -> list[dict]:
     """返回未通过评论初筛的评论（每条取最新初筛结果），供人工核验初筛效果。
 
-    含两类：疑似营销水军（category="marketing"），
-    以及与购车无关（category="unrelated"）。
+    含三类：疑似营销水军（marketing）、无购买倾向（no_intent）、
+    与购车无关（unrelated）。
     """
     dropped = [(cid, res) for cid, res in _latest_screenings(session).items()
-               if not _screening_passed(res)]
+               if not screening_dict_passed(res)]
 
     comment_ids = [cid for cid, _ in dropped]
     comments = ({c.id: c for c in session.query(Comment)
@@ -108,14 +104,14 @@ def query_screened_out_comments(session: Session) -> list[dict]:
             "content": c.content or "",
             "nickname": u.nickname if u else "",
             "platform": u.platform if u else "",
-            "category": ("marketing" if res.get("is_suspected_marketing")
-                         else "unrelated"),
+            "category": screened_out_category(res),
             "reason": res.get("reason") or "",
             "confidence": res.get("confidence"),
         })
-    # 疑似水军在前（数量少、复核价值高），组内按置信度降序
-    return sorted(rows, key=lambda d: (0 if d["category"] == "marketing"
-                                       else 1, -(d["confidence"] or 0)))
+    # 疑似水军在前（数量少、复核价值高），无购买倾向次之，非购车相关最后
+    order = {"marketing": 0, "no_intent": 1, "unrelated": 2}
+    return sorted(rows, key=lambda d: (order.get(d["category"], 9),
+                                       -(d["confidence"] or 0)))
 
 
 def query_unclassified_users(session: Session) -> list[dict]:
@@ -151,7 +147,7 @@ def query_unclassified_users(session: Session) -> list[dict]:
     users = {u.id: u for u in session.query(PlatformUser)
              .filter(PlatformUser.id.in_(uids)).all()}
     passed_ids = [cid for cid, res in _latest_screenings(session).items()
-                  if _screening_passed(res)]
+                  if screening_dict_passed(res)]
     comments_by_user: dict[int, list[str]] = {}
     if passed_ids:
         for c in (session.query(Comment)

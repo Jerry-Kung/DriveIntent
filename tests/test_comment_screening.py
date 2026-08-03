@@ -36,6 +36,9 @@ def _item(cid, purchase=True):
             "intent_signals": ["price_inquiry"] if purchase else [],
             "target_brand": "坦克", "target_model": "坦克300",
             "intent_strength": "high" if purchase else "none",
+            # V1.3：与 is_purchase_related 同步，保证共享该 fixture 的
+            # 流水线测试（e2e/worker/连接释放）在两标签判定下行为不变
+            "has_purchase_intent": purchase,
             "reason": "询问价格", "confidence": 0.9}
 
 

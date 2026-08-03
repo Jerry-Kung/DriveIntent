@@ -193,9 +193,12 @@
     {% if screened_out %}
     {% set n_marketing = screened_out | selectattr("category", "equalto",
                                                    "marketing") | list | length %}
-    {% set n_unrelated = screened_out | length - n_marketing %}
+    {% set n_no_intent = screened_out | selectattr("category", "equalto",
+                                                   "no_intent") | list | length %}
+    {% set n_unrelated = screened_out | length - n_marketing - n_no_intent %}
     <h2 class="sec">未通过初筛的评论（共 {{ screened_out | length }} 条：
-      疑似水军 {{ n_marketing }} · 非购车相关 {{ n_unrelated }}）</h2>
+      疑似水军 {{ n_marketing }} · 无购买倾向 {{ n_no_intent }} ·
+      非购车相关 {{ n_unrelated }}）</h2>
     <div class="table-card">
       <div class="table-wrap">
         <table>
@@ -216,6 +219,8 @@
               <td>
                 {% if c.category == "marketing" %}
                 <span class="pill pill-invalid">疑似水军</span>
+                {% elif c.category == "no_intent" %}
+                <span class="pill">无购买倾向</span>
                 {% else %}
                 <span class="pill">非购车相关</span>
                 {% endif %}
