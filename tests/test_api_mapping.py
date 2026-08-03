@@ -131,27 +131,6 @@ def test_map_screening_off_topic():
     assert r.passed is False and r.filter_type == "off_topic"
 
 
-def test_map_screening_model_mismatch_marks_and_passes():
-    # V1.1.1：车型严重不匹配 → filter_type=model_mismatch，原因入 filter_reason，
-    # 仍视为通过初筛（降级是标记而非过滤）
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                intent_strength="medium", reason="询价")
-    r = map_screening_item(item, "t", mismatch_reason="价位不匹配")
-    assert r.passed is True
-    assert r.filter_type == "model_mismatch"
-    assert r.filter_reason == "价位不匹配"
-
-
-def test_map_screening_mismatch_not_applied_to_filtered():
-    # 已被过滤的评论不再叠加 model_mismatch 标记
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                comment_actor="bot_spam")
-    r = map_screening_item(item, "t", mismatch_reason="价位不匹配")
-    assert r.passed is False
-    assert r.filter_type == "bot_spam"
-    assert r.filter_reason is None
-
-
 def test_map_screening_no_legacy_fields():
     # V1.1.1：intent_strength / downgrade_applied / downgrade_reason 不再输出
     item = CommentScreeningItem(comment_id="c", is_meaningful=True,

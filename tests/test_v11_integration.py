@@ -32,7 +32,6 @@ def env(monkeypatch, tmp_path):
     p.write_text(json.dumps(_OUR_MODELS, ensure_ascii=False),
                  encoding="utf-8")
     monkeypatch.setattr(settings, "our_models_config_path", str(p))
-    monkeypatch.setattr(settings, "intent_downgrade_enabled", True)
     engine = create_engine("sqlite://",
                            connect_args={"check_same_thread": False},
                            poolclass=StaticPool)
@@ -91,13 +90,11 @@ async def test_v11_screening_end_to_end(env):
                       headers={"Authorization": "Bearer secret"}).json()
     assert body["status"] == "success"
     r1, r2, r3 = body["result"]["results"]
-    # cm_1：真实用户，10万微型车 vs 38万越野 → 价位+品类双维度不匹配，
-    # V1.1.1 标记 model_mismatch，原因入 filter_reason，仍通过初筛
+    # cm_1：真实用户询价 → 通过初筛（V1.3 起初筛不再考虑车型匹配）
     assert r1["passed"] is True
-    assert r1["filter_type"] == "model_mismatch"
-    assert "价位" in r1["filter_reason"]
+    assert r1["filter_type"] == "genuine_user"
+    assert r1["filter_reason"] is None
     assert "intent_strength" not in r1
-    assert "downgrade_applied" not in r1
     # cm_2：已下定车主 → 过滤，filter_reason 无需补充说明
     assert r2["passed"] is False
     assert r2["filter_type"] == "ordered_owner"

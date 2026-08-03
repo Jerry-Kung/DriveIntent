@@ -76,4 +76,3 @@ def test_settings_new_fields_defaults():
     from app.config import Settings
     s = Settings(_env_file=None)
     assert s.our_models_config_path == "config/our_models.json"
-    assert s.intent_downgrade_enabled is True

@@ -3,8 +3,6 @@ import json
 from app.api.mapping import map_screening_item, now_iso
 from app.api.schemas import CommentObject, CommentScreeningRequest
 from app.config import settings
-from app.matching.downgrade import DowngradeDecision, evaluate_video_context
-from app.matching.loader import load_our_models
 from app.schemas.skills import (CommentScreeningItem, CommentScreeningResult,
                                 VideoContextResult)
 from app.skills.executor import SkillExecutor
@@ -54,20 +52,12 @@ async def run_comment_screening(executor: SkillExecutor,
     for c in request.comments:
         groups.setdefault(c.video_title, []).append(c)
 
-    # V1.1：我方车型配置整单加载一次；每个视频语境评估一次降级决策
-    our_models = (load_our_models()
-                  if settings.intent_downgrade_enabled else None)
-    decisions: dict[str, DowngradeDecision] = {}
-
     size = settings.comment_batch_size
     items: dict[str, CommentScreeningItem] = {}
     errors: dict[str, str] = {}
     for title, comments in groups.items():
         if title not in ctx_cache:
             ctx_cache[title] = await _video_context(executor, comments[0])
-            decisions[title] = evaluate_video_context(
-                ctx_cache[title], our_models,
-                enabled=settings.intent_downgrade_enabled)
         ctx = ctx_cache[title]
         for i in range(0, len(comments), size):
             batch = comments[i:i + size]
@@ -88,11 +78,7 @@ async def run_comment_screening(executor: SkillExecutor,
     for c in request.comments:
         item = items.get(c.comment_id)
         if item is not None:
-            decision = decisions.get(c.video_title) or DowngradeDecision()
-            mismatch = (decision.reason
-                        if decision.downgrade_levels > 0 else None)
-            results.append(map_screening_item(
-                item, ts, mismatch_reason=mismatch).model_dump())
+            results.append(map_screening_item(item, ts).model_dump())
         else:
             err = errors.get(c.comment_id, "筛选失败")
             results.append({"comment_id": c.comment_id, "passed": False,

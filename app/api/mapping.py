@@ -35,19 +35,13 @@ def resolve_filter_type(item: CommentScreeningItem) -> str:
     return "genuine_user"
 
 
-def map_screening_item(item: CommentScreeningItem, processed_at: str, *,
-                       mismatch_reason: str | None = None) -> ScreeningResult:
+def map_screening_item(item: CommentScreeningItem,
+                       processed_at: str) -> ScreeningResult:
     filter_type = resolve_filter_type(item)
-    reason = None
-    # V1.1.1：车型严重不匹配的降级只施加于真实用户（其余类型已被过滤），
-    # 以 filter_type=model_mismatch 标识，不匹配原因写入 filter_reason
-    if filter_type == "genuine_user" and mismatch_reason:
-        filter_type = "model_mismatch"
-        reason = mismatch_reason
-    passed = filter_type in ("genuine_user", "model_mismatch")
+    passed = filter_type == "genuine_user"
     analysis = item.reason or ("通过初筛。" if passed else "未通过初筛。")
     return ScreeningResult(comment_id=item.comment_id, passed=passed,
-                           filter_reason=reason, filter_type=filter_type,
+                           filter_type=filter_type,
                            analysis=analysis, processed_at=processed_at)
 
 
