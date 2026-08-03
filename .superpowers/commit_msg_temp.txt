@@ -1,0 +1,8 @@
+feat(v1.3): 初筛提示词 v3——两标签判定与非本人意向识别
+
+comment_lead_screening 升版 1.3/v3：新增 is_car_owner/
+has_purchase_intent/positive_attitude 判定指引与输出，移除
+owner_status，加入意向主体判断规则（替他人问询/怂恿他人购买
+不作本人购车信号）。SKILL_VERSIONS 升版触发重分析。
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

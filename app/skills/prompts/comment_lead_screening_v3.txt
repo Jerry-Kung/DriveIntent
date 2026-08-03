@@ -1,0 +1,81 @@
+你是汽车销售线索分析专家。请结合视频语境，逐条分析以下抖音评论，判断每条评论的购车线索价值、评论主体类型、车主状态与购车意向。
+
+视频语境（JSON）：
+$video_context_json
+
+评论列表（共 $comment_count 条，JSON）：
+$comments_json
+
+判断购车意向时必须区分以下四个层次：
+1. 正面情绪（如"好看""厉害""good"）——不代表购车意向；
+2. 产品兴趣（如"内饰不错""颜色好看"）——有兴趣但未进入决策；
+3. 潜在购车需求（如"和XX比怎么样""保养贵不贵"）——开始了解或比较；
+4. 明确购车意向（如"落地多少钱""哪里能试驾""置换有补贴吗"）——接近交易或行动。
+
+评论主体类型 comment_actor（五选一）：
+- genuine_user：真实普通用户（默认）；
+- bot_spam：批量刷屏水军——短句复读、模板化口号、纯表情/数字灌水、与多条评论雷同；
+- marketing_account：营销号/广告引流——含联系方式、导流话术、号召他人购买、软广模板化夸赞；
+- noise："厉害""哈哈""排面"等无意义或纯情绪内容；
+- off_topic：与视频和汽车均无关的内容。
+
+是否车主 is_car_owner（布尔，独立判断，不要求是我方或视频中的车型）：
+- true：有明确证据表明发布者大概率已购车（已下单/下大定也算已购车），
+  如"提车三个月""我这台开了2万公里""大定已下""开了5年想换车"；
+- false：无明确已购证据时一律 false。
+车主判断的反例（必须判 false）：
+- "准备订""想下定""打算买"是购买意向，不是已购/已定；
+- 咨询他人用车体验（如"车主们保养贵不贵""已提车的朋友说说油耗"）是潜在买家，不是车主。
+
+购车意向 has_purchase_intent（布尔，独立判断，不要求意向指向特定车型）：
+- 车主的意向表达 → true：增换购类（换车、再买、添一台、置换、升级、入手、
+  增换、二胎车等）、处置意图类（卖了、出手、保值率等）、抱怨不满类（不够用、
+  空间小、开腻了、下一台、开了xx年等）；
+- 非车主的意向表达 → true：询价、询问配置、对比、联系方式、优惠政策、等上市
+  及其他类似的购买相关表述；
+- 单纯夸赞、技术讨论（如"内饰好看""底盘不错"）不算购车意向 → false。
+
+积极信号 positive_attitude（布尔）：非车主且无购车意向，但对车辆表达了兴趣、
+赞美等积极信号（如"内饰好看""这底盘调校不错"）时为 true；其余情况为 false。
+
+意向主体判断（重要）：购车意向必须是发布者本人的意向：
+- 明确替他人问询/转述他人意向（如"我朋友想买一辆xxx"）→ 不作为本人购车信号，
+  has_purchase_intent=false；
+- 疑似怂恿他人购买/营销推广口吻（如选车视频下评论"分期30期买XX"，看不出是
+  自己想买）→ 降低 intent_strength 并在 reason 中说明；营销特征明显时
+  comment_actor=marketing_account。
+
+注意事项：
+- 负面情绪中包含真实换车需求（如"现在这车售后太差，准备换品牌"）属于有价值线索，不得过滤；
+- 疑似车主口吻但同时带引流/广告特征的，comment_actor 判为 marketing_account；
+- 旧字段 is_meaningful / is_suspected_marketing / is_automotive_related 仍需按原义输出，
+  并与 comment_actor 保持一致（如 comment_actor=noise 时 is_meaningful=false）。
+- 一条评论同时符合多个异常类型时，comment_actor 按 off_topic > noise > bot_spam > marketing_account 的顺序取最先命中项；
+
+intent_signals 可选值：price_inquiry（询价）、trade_in（置换）、test_drive（试驾）、
+finance（金融政策）、store_visit（门店/交付）、comparison（竞品对比）、
+config_inquiry（配置咨询）、cost_concern（用车成本）、purchase_plan（购车计划）。
+
+请严格输出以下 JSON（不要输出任何其他内容）。items 数组必须与输入评论一一对应：
+数量相同、comment_id 完全一致、不得遗漏或新增：
+{
+  "items": [
+    {
+      "comment_id": "输入中的 comment_id，原样返回",
+      "is_meaningful": true,
+      "is_automotive_related": true,
+      "is_purchase_related": true,
+      "is_suspected_marketing": false,
+      "comment_actor": "genuine_user | bot_spam | marketing_account | noise | off_topic",
+      "is_car_owner": false,
+      "has_purchase_intent": true,
+      "positive_attitude": false,
+      "intent_signals": ["price_inquiry"],
+      "target_brand": "评论指向的品牌，没有则用视频语境品牌，无法判断为 null",
+      "target_model": "评论指向的车型，同上",
+      "intent_strength": "none | low | medium | high",
+      "reason": "判断理由，一句话",
+      "confidence": 0.9
+    }
+  ]
+}

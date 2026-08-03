@@ -104,11 +104,12 @@ def test_v11_video_context_config_uses_v2():
     assert config.version == "1.1"
 
 
-def test_v11_screening_config_uses_v2():
+def test_v13_screening_config_uses_v3():
     from app.skills.executor import load_skill_config
     config = load_skill_config("comment_lead_screening")
-    assert config.prompt_file == "comment_lead_screening_v2.txt"
-    assert config.prompt_version == "v2"
+    assert config.prompt_file == "comment_lead_screening_v3.txt"
+    assert config.prompt_version == "v3"
+    assert config.version == "1.3"
 
 
 def test_v11_video_context_prompt_renders_with_new_fields():
@@ -120,14 +121,26 @@ def test_v11_video_context_prompt_renders_with_new_fields():
     assert "use_case" in text
 
 
-def test_v11_screening_prompt_renders_with_owner_fields():
+def test_v13_screening_prompt_renders_with_label_fields():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("comment_lead_screening")
     text = render_prompt(config, {"video_context_json": "{}",
                                   "comments_json": "[]",
                                   "comment_count": "0"})
-    assert "owner_status" in text
+    assert "is_car_owner" in text
+    assert "has_purchase_intent" in text
+    assert "positive_attitude" in text
     assert "comment_actor" in text
-    assert "existing_owner" in text and "ordered_owner" in text
-    # 反例约束必须在 Prompt 中明确
+    assert "owner_status" not in text          # 旧枚举字段退场
+    # 车主判定反例约束
     assert "准备订" in text or "想下定" in text
+    # 车主意向词例与非本人意向规则
+    assert "置换" in text
+    assert "我朋友想买" in text
+    # no_purchase_intent 由代码合成，不得出现在 LLM 输出模板中
+    assert "no_purchase_intent" not in text
+
+
+def test_v13_pipeline_screening_version_bumped():
+    from app.workflow.pipeline import COMMENT_SCREENING_SKILL, SKILL_VERSIONS
+    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.3"
