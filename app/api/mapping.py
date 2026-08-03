@@ -18,21 +18,25 @@ def now_iso() -> str:
 
 
 def resolve_filter_type(item: CommentScreeningItem) -> str:
-    """合成 filter_type。优先级：actor 异常类 > 车主状态 > 兼容回退 > 真实用户。
+    """合成 filter_type。优先级：actor 异常类 > 旧字段兜底 > 意向/车主规则。
 
-    comment_actor 本身即按 off_topic > noise > bot_spam > marketing_account
-    的语义由 LLM 五选一，代码层只需再叠加车主状态与 V1.0 旧字段回退。
+    V1.3：passed 与 filter_type 严格一一对应（genuine_user 通过，其余不过）。
+    有购车意向必过筛；无意向车主不过筛；无意向非车主看积极信号。
     """
     if item.comment_actor != "genuine_user":
         return item.comment_actor
-    if item.owner_status != "none":
-        return item.owner_status
-    # 兼容 LLM 未输出新字段的情况，回退 V1.0 判定
+    # 兼容 LLM 未输出 comment_actor 的情况，回退 V1.0 判定
     if item.is_suspected_marketing:
         return "marketing_account"
     if not item.is_meaningful:
         return "noise"
-    return "genuine_user"
+    if item.has_purchase_intent:
+        return "genuine_user"
+    if item.is_car_owner:
+        return "no_purchase_intent"
+    if item.positive_attitude:
+        return "genuine_user"
+    return "no_purchase_intent"
 
 
 def map_screening_item(item: CommentScreeningItem,
@@ -41,8 +45,10 @@ def map_screening_item(item: CommentScreeningItem,
     passed = filter_type == "genuine_user"
     analysis = item.reason or ("通过初筛。" if passed else "未通过初筛。")
     return ScreeningResult(comment_id=item.comment_id, passed=passed,
-                           filter_type=filter_type,
-                           analysis=analysis, processed_at=processed_at)
+                           filter_type=filter_type, analysis=analysis,
+                           is_car_owner=item.is_car_owner,
+                           has_purchase_intent=item.has_purchase_intent,
+                           processed_at=processed_at)
 
 
 def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,

@@ -9,7 +9,7 @@ def test_now_iso_has_offset():
 def test_map_screening_passed():
     item = CommentScreeningItem(comment_id="cm_1", is_meaningful=True,
                                 is_suspected_marketing=False,
-                                is_purchase_related=True, reason="真实车主反馈")
+                                has_purchase_intent=True, reason="真实车主反馈")
     r = map_screening_item(item, "2026-07-19T15:30:00+08:00")
     assert r.passed is True and r.filter_reason is None
     assert "真实车主反馈" in r.analysis
@@ -76,53 +76,80 @@ def test_map_profile_no_comments():
     assert r.has_value is False
 
 
-def test_resolve_filter_type_priority_actor_over_owner():
-    # 营销号 + 车主特征同时命中 → 归营销号
+def _item(**kw):
+    from app.schemas.skills import CommentScreeningItem
+    base = dict(comment_id="c", is_meaningful=True,
+                is_suspected_marketing=False)
+    base.update(kw)
+    return CommentScreeningItem(**base)
+
+
+def test_v13_rule1_actor_abnormal_wins():
+    # 优先级1：actor 异常类优先于意向标签
     from app.api.mapping import resolve_filter_type
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                comment_actor="marketing_account",
-                                owner_status="existing_owner")
+    item = _item(comment_actor="marketing_account",
+                 has_purchase_intent=True, is_car_owner=True)
     assert resolve_filter_type(item) == "marketing_account"
 
 
-def test_resolve_filter_type_owner_values():
-    from app.api.mapping import resolve_filter_type
-    existing = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                    owner_status="existing_owner")
-    ordered = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                   owner_status="ordered_owner")
-    assert resolve_filter_type(existing) == "existing_owner"
-    assert resolve_filter_type(ordered) == "ordered_owner"
+def test_v13_rule2_intent_always_passes():
+    # 优先级2：有购车意向必过筛（车主与否均然）
+    from app.api.mapping import resolve_filter_type, map_screening_item
+    for owner in (True, False):
+        item = _item(has_purchase_intent=True, is_car_owner=owner)
+        assert resolve_filter_type(item) == "genuine_user"
+        assert map_screening_item(item, "t").passed is True
 
 
-def test_resolve_filter_type_legacy_fallback():
-    # LLM 未输出新字段（默认值）时回退 V1.0 判定
-    from app.api.mapping import resolve_filter_type
-    marketing = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                     is_suspected_marketing=True)
-    noise = CommentScreeningItem(comment_id="c", is_meaningful=False)
-    ok = CommentScreeningItem(comment_id="c", is_meaningful=True)
-    assert resolve_filter_type(marketing) == "marketing_account"
-    assert resolve_filter_type(noise) == "noise"
-    assert resolve_filter_type(ok) == "genuine_user"
-
-
-def test_map_screening_owner_filtered_no_reason_text():
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                owner_status="existing_owner",
-                                intent_strength="low", reason="提车三个月")
+def test_v13_rule3_owner_without_intent_filtered():
+    # 优先级3：无意向车主（纯讨论/吐槽）不过筛
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=True, has_purchase_intent=False,
+                 positive_attitude=True, reason="我这台油耗8个")
     r = map_screening_item(item, "t")
     assert r.passed is False
-    assert r.filter_type == "existing_owner"
+    assert r.filter_type == "no_purchase_intent"
     assert r.filter_reason is None
-    assert "提车三个月" in r.analysis
 
 
-def test_map_screening_ordered_owner():
-    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
-                                owner_status="ordered_owner")
+def test_v13_rule4_non_owner_positive_passes():
+    # 优先级4：无意向非车主有积极信号 → 过筛（B级弱线索）
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=False, has_purchase_intent=False,
+                 positive_attitude=True, reason="内饰真好看")
     r = map_screening_item(item, "t")
-    assert r.passed is False and r.filter_type == "ordered_owner"
+    assert r.passed is True
+    assert r.filter_type == "genuine_user"
+    assert r.has_purchase_intent is False
+
+
+def test_v13_rule5_non_owner_no_signal_filtered():
+    # 优先级5：无意向非车主无积极信号 → 不过筛
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=False, has_purchase_intent=False,
+                 positive_attitude=False)
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "no_purchase_intent"
+
+
+def test_v13_result_carries_labels():
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=True, has_purchase_intent=True)
+    d = map_screening_item(item, "t").model_dump()
+    assert d["is_car_owner"] is True
+    assert d["has_purchase_intent"] is True
+    assert "positive_attitude" not in d       # 内部信号不对外
+    assert "owner_status" not in d
+
+
+def test_v13_legacy_fallback_kept():
+    # LLM 未输出 comment_actor 时回退 V1.0 判定（旧字段兜底）
+    from app.api.mapping import resolve_filter_type
+    marketing = _item(is_suspected_marketing=True, has_purchase_intent=True)
+    noise = _item(is_meaningful=False)
+    assert resolve_filter_type(marketing) == "marketing_account"
+    assert resolve_filter_type(noise) == "noise"
 
 
 def test_map_screening_off_topic():

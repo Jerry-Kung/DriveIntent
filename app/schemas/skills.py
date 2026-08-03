@@ -31,10 +31,17 @@ class CommentScreeningItem(BaseModel):
     target_model: str | None = None
     intent_strength: Literal["none", "low", "medium", "high"] = "none"
     reason: str = ""
-    # V1.1：车主状态与评论主体类型（两者正交，由代码层合成 filter_type）
-    owner_status: Literal["none", "existing_owner", "ordered_owner"] = "none"
+    # V1.1：评论主体类型（异常类优先过滤）
     comment_actor: Literal["genuine_user", "bot_spam", "marketing_account",
                            "noise", "off_topic"] = "genuine_user"
+    # V1.3：独立分析标签（不要求与我方在售车型相关）与内部积极信号。
+    # is_car_owner：有明确证据大概率已购车（含已下单/下大定）；
+    # has_purchase_intent：表达了任何购车相关倾向（本人意向）；
+    # positive_attitude：非车主无意向但表达兴趣/赞美，仅供代码层
+    # 合成 filter_type 使用，不进对外契约。
+    is_car_owner: bool = False
+    has_purchase_intent: bool = False
+    positive_attitude: bool = False
     confidence: float = 0.0
 
 

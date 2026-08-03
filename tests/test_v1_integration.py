@@ -48,7 +48,7 @@ async def test_comment_screening_end_to_end(env):
                    json.dumps({"items": [
                        {"comment_id": "cm_1", "is_meaningful": True,
                         "is_suspected_marketing": False,
-                        "is_purchase_related": True, "reason": "真实车主"}]}))
+                        "has_purchase_intent": True, "reason": "真实车主"}]}))
     executor = SkillExecutor(LLMGateway(provider))
     worker = ApiJobWorker(lambda: Session(), executor, LLMGateway(provider))
     await worker.run_once()

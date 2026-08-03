@@ -83,5 +83,6 @@ async def run_comment_screening(executor: SkillExecutor,
             err = errors.get(c.comment_id, "筛选失败")
             results.append({"comment_id": c.comment_id, "passed": False,
                             "filter_reason": None, "filter_type": None,
+                            "is_car_owner": None, "has_purchase_intent": None,
                             "analysis": "", "processed_at": ts, "error": err})
     return {"results": results}

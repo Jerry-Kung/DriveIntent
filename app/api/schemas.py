@@ -58,10 +58,12 @@ class ProfileAnalysisRequest(BaseModel):
 class ScreeningResult(BaseModel):
     comment_id: str
     passed: bool
-    # V1.1.1：filter_reason 为 filter_type 的纯文本补充说明，
-    # 仅在必要时有值（当前仅 filter_type=model_mismatch 时携带不匹配原因）
+    # V1.3：恒为 null（原 model_mismatch 场景已取消），保留字段避免契约结构变动
     filter_reason: str | None = None
     filter_type: str = "genuine_user"
+    # V1.3：独立分析标签；该条处理失败时为 null
+    is_car_owner: bool | None = None
+    has_purchase_intent: bool | None = None
     analysis: str = ""
     processed_at: str = ""
     error: str | None = None

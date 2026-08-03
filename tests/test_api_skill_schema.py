@@ -16,27 +16,28 @@ def test_user_lead_result_profile_fields_default_empty():
     assert out.analysis_text == ""
 
 
-def test_screening_item_v11_new_fields_defaults():
+def test_screening_item_v13_new_fields_defaults():
     from app.schemas.skills import CommentScreeningItem
     item = CommentScreeningItem(comment_id="c1")
-    assert item.owner_status == "none"
+    assert item.is_car_owner is False
+    assert item.has_purchase_intent is False
+    assert item.positive_attitude is False
     assert item.comment_actor == "genuine_user"
 
 
-def test_screening_item_v11_new_fields_values():
+def test_screening_item_v13_owner_status_removed():
     from app.schemas.skills import CommentScreeningItem
-    item = CommentScreeningItem(comment_id="c1", owner_status="ordered_owner",
-                                comment_actor="marketing_account")
-    assert item.owner_status == "ordered_owner"
-    assert item.comment_actor == "marketing_account"
+    # 旧字段作为多余输入被忽略（历史 LLM 输出兼容），不再是模型字段
+    item = CommentScreeningItem(comment_id="c1", owner_status="ordered_owner")
+    assert "owner_status" not in item.model_dump()
 
 
-def test_screening_item_v11_illegal_value_rejected():
-    import pytest
-    from pydantic import ValidationError
+def test_screening_item_v13_label_values():
     from app.schemas.skills import CommentScreeningItem
-    with pytest.raises(ValidationError):
-        CommentScreeningItem(comment_id="c1", owner_status="maybe_owner")
+    item = CommentScreeningItem(comment_id="c1", is_car_owner=True,
+                                has_purchase_intent=True)
+    assert item.is_car_owner is True
+    assert item.has_purchase_intent is True
 
 
 def test_video_context_v11_new_fields_defaults():
