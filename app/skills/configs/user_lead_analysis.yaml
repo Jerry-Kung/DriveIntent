@@ -1,11 +1,12 @@
 skill_id: user_lead_analysis
-version: "1.2.1"
+version: "1.3"
 description: >
   基于用户全部有效评论、视频语境与统计特征，综合判断购车意向，
-  输出 H/A/B/C 等级、购车画像与销售建议；评级采用三段流水线：
-  评论基线 → 在售车型匹配度调整（四档）→ 主页画像有限上调。
+  输出 H/A/B/C 等级、购车画像与销售建议；独立判定账号级"是否车主"
+  与"购车意向"标签；评级采用三段流水线：评论基线 → 在售车型匹配度
+  调整（四档）→ 主页画像有限上调，并识别非本人意向予以降档。
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_analysis_v4.txt
-prompt_version: "v4"
+prompt_file: user_lead_analysis_v5.txt
+prompt_version: "v5"

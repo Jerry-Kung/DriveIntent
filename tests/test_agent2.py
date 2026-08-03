@@ -67,12 +67,12 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v121_user_analysis_config_uses_v4():
+def test_v13_user_analysis_config_uses_v5():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v4.txt"
-    assert config.prompt_version == "v4"
-    assert config.version == "1.2.1"
+    assert config.prompt_file == "user_lead_analysis_v5.txt"
+    assert config.prompt_version == "v5"
+    assert config.version == "1.3"
 
 
 def test_v12_user_analysis_prompt_has_profile_rules():
@@ -308,10 +308,27 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.2.1"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.3"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
+
+
+def test_v13_user_analysis_prompt_has_label_rules():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    assert "is_car_owner" in text
+    assert "has_purchase_intent" in text
+    assert "我朋友想买" in text          # 非本人意向规则
+    assert "置换" in text                # 车主意向词例
+    # v4 三段流水线与审计字段原样保留
+    assert "baseline_grade" in text
+    assert "model_match_level" in text
+    assert "只上调" in text
 
 
 @pytest.mark.asyncio
