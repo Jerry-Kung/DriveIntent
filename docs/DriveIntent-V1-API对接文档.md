@@ -34,30 +34,42 @@ API Key 由服务方分配。认证失败返回 `401`。
 { "job_id": "b3f1c2d4-...", "status": "pending", "type": "comment_screening" }
 ```
 
+
+
 ### 任务状态（status）
 
-| 状态 | 含义 | 终态 |
-|------|------|:---:|
-| `pending` | 已入队，等待执行 | |
-| `running` | 执行中（`progress` 反映进度） | |
-| `success` | 全部条目处理成功 | ✅ |
-| `partial` | 部分条目失败（失败条目在 `result.results[]` 中带 `error` 字段），其余可用 | ✅ |
-| `failed` | 整单失败（`error` 有值，`result` 为 null）；服务端自动重试耗尽后进入此状态 | ✅ |
+
+| 状态        | 含义                                                  | 终态  |
+| --------- | --------------------------------------------------- | --- |
+| `pending` | 已入队，等待执行                                            |     |
+| `running` | 执行中（`progress` 反映进度）                                |     |
+| `success` | 全部条目处理成功                                            | ✅   |
+| `partial` | 部分条目失败（失败条目在 `result.results[]` 中带 `error` 字段），其余可用 | ✅   |
+| `failed`  | 整单失败（`error` 有值，`result` 为 null）；服务端自动重试耗尽后进入此状态    | ✅   |
+
+
+
 
 ### 错误码
 
-| HTTP 码 | 含义 | 处理建议 |
-|--------|------|---------|
-| `401` | 认证失败 | 检查 API Key |
-| `404` | job_id 不存在 | 检查提交时返回的 job_id |
-| `422` | 请求参数不合法 | 响应体含 Pydantic 校验明细，检查必填字段与类型 |
-| `500` | 服务内部错误 | 重试 2-3 次，持续失败联系服务方 |
+
+| HTTP 码 | 含义         | 处理建议                         |
+| ------ | ---------- | ---------------------------- |
+| `401`  | 认证失败       | 检查 API Key                   |
+| `404`  | job_id 不存在 | 检查提交时返回的 job_id              |
+| `422`  | 请求参数不合法    | 响应体含 Pydantic 校验明细，检查必填字段与类型 |
+| `500`  | 服务内部错误     | 重试 2-3 次，持续失败联系服务方           |
+
+
+
 
 ### 建议批次大小
 
 评论初筛 50-200 条/批，账号精筛 20-50 个/批。
 
 ---
+
+
 
 ## 4. Agent 1：评论价值初筛
 
@@ -69,18 +81,20 @@ API Key 由服务方分配。认证失败返回 `401`。
 
 请求体 `comments` 数组，每个元素：
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|:---:|------|
-| `comment_id` | String | 是 | 评论唯一标识 |
-| `video_title` | String | 是 | 视频标题 |
-| `video_author` | String | 是 | 视频作者昵称 |
-| `video_author_fans` | Integer | 否 | 作者粉丝数（缺省 0） |
-| `video_metrics` | Object | 否 | 视频热度：`like_count` / `comment_count` / `share_count` / `collect_count`（缺省 0） |
-| `comment_content` | String | 是 | 评论文本 |
-| `comment_author` | String | 是 | 评论账号昵称 |
-| `comment_author_uid` | String | 是 | 评论账号唯一标识 |
-| `comment_time` | String | 是 | 评论时间（ISO 8601） |
-| `comment_like_count` | Integer | 否 | 评论获赞数（缺省 0） |
+
+| 字段                   | 类型      | 必填  | 说明                                                                          |
+| -------------------- | ------- | --- | --------------------------------------------------------------------------- |
+| `comment_id`         | String  | 是   | 评论唯一标识                                                                      |
+| `video_title`        | String  | 是   | 视频标题                                                                        |
+| `video_author`       | String  | 是   | 视频作者昵称                                                                      |
+| `video_author_fans`  | Integer | 否   | 作者粉丝数（缺省 0）                                                                 |
+| `video_metrics`      | Object  | 否   | 视频热度：`like_count` / `comment_count` / `share_count` / `collect_count`（缺省 0） |
+| `comment_content`    | String  | 是   | 评论文本                                                                        |
+| `comment_author`     | String  | 是   | 评论账号昵称                                                                      |
+| `comment_author_uid` | String  | 是   | 评论账号唯一标识                                                                    |
+| `comment_time`       | String  | 是   | 评论时间（ISO 8601）                                                              |
+| `comment_like_count` | Integer | 否   | 评论获赞数（缺省 0）                                                                 |
+
 
 **请求示例**：
 
@@ -104,34 +118,41 @@ API Key 由服务方分配。认证失败返回 `401`。
 }
 ```
 
+
+
 ### 结果（轮询响应中的 `result.results[]`）
 
 与输入 comments **一一对应、顺序一致**，每个元素：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `comment_id` | String | 对应输入的评论 ID |
-| `passed` | Boolean | 是否通过初筛 |
-| `filter_type` | String \| null | 评论分类结果（枚举见下表）；该条处理失败时为 `null` |
-| `is_car_owner` | Boolean \| null | 是否车主：有明确证据表明发布者大概率已购车（已下单/下大定也算），**不要求**是我方在售车型；该条处理失败时为 `null` |
-| `has_purchase_intent` | Boolean \| null | 购车意向：是否表达了任何买车相关倾向（本人意向，**不要求**指向我方在售车型）；该条处理失败时为 `null` |
-| `filter_reason` | String \| null | filter_type 的纯文本补充说明，V1.3 起恒为 null（保留字段，对接方无需解析） |
-| `analysis` | String | AI 分析说明 |
-| `processed_at` | String | 处理时间戳 |
-| `error` | String \| null | 该条处理失败时的错误信息（正常为 null；有值时 `passed` 恒为 false，整单 status 为 `partial`） |
+
+| 字段                    | 类型             | 说明                                                                 |
+| --------------------- | -------------- | ------------------------------------------------------------------ |
+| `comment_id`          | String         | 对应输入的评论 ID                                                         |
+| `passed`              | Boolean        | 是否通过初筛                                                             |
+| `filter_type`         | String | null  | 评论分类结果（枚举见下表）；该条处理失败时为 `null`                                      |
+| `is_car_owner`        | Boolean | null | 是否车主：有明确证据表明发布者大概率已购车（已下单/下大定也算），**不要求**是我方在售车型；该条处理失败时为 `null`    |
+| `has_purchase_intent` | Boolean | null | 购车意向：是否表达了任何买车相关倾向（本人意向，**不要求**指向我方在售车型）；该条处理失败时为 `null`           |
+| `filter_reason`       | String | null  | filter_type 的纯文本补充说明，V1.3 起恒为 null（保留字段，对接方无需解析）                   |
+| `analysis`            | String         | AI 分析说明                                                            |
+| `processed_at`        | String         | 处理时间戳                                                              |
+| `error`               | String | null  | 该条处理失败时的错误信息（正常为 null；有值时 `passed` 恒为 false，整单 status 为 `partial`） |
+
 
 `filter_type` 枚举与 `passed` 对应关系（V1.3 起严格一一对应）：
 
-| filter_type | 含义 | passed |
-|---|---|---|
-| `genuine_user` | 真实用户，有购车意向或积极信号，通过初筛 | `true` |
-| `no_purchase_intent` | 提到汽车相关内容但无购车意向/积极信号（车主纯讨论吐槽、非车主无兴趣表达） | `false` |
-| `bot_spam` | 批量刷屏水军 | `false` |
-| `marketing_account` | 营销号/广告引流 | `false` |
-| `noise` | 无实质内容 | `false` |
-| `off_topic` | 与汽车无关 | `false` |
+
+| filter_type          | 含义       | passed  |
+| -------------------- | -------- | ------- |
+| `genuine_user`       | 潜在客户     | `true`  |
+| `no_purchase_intent` | 无购车意向    | `false` |
+| `bot_spam`           | 批量刷屏水军   | `false` |
+| `marketing_account`  | 营销号/广告引流 | `false` |
+| `noise`              | 无实质内容    | `false` |
+| `off_topic`          | 与汽车无关    | `false` |
+
 
 **V1.3 契约变更说明**（相对 V1.2.1）：
+
 - 每条结果新增 `is_car_owner`、`has_purchase_intent` 两个独立布尔字段，Agent 2 账号结果同步新增（见 Agent 2 节）。
 - **移除** `model_mismatch` / `existing_owner` / `ordered_owner` 三个枚举值：初筛不再考虑车型匹配；车主状态改由独立字段 `is_car_owner` 表达。
 - `passed` 与 `filter_type` 恢复严格一一对应，不再有 `model_mismatch` 这种 `passed=true` 的标记型例外。
@@ -141,6 +162,8 @@ API Key 由服务方分配。认证失败返回 `401`。
 - 请求侧（入参）无变化。
 
 ---
+
+
 
 ## 5. Agent 2：账号画像精筛
 
@@ -152,54 +175,66 @@ API Key 由服务方分配。认证失败返回 `401`。
 
 请求体 `accounts` 数组，每个元素：
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|:---:|------|
-| `account_uid` | String | 是 | 账号唯一标识 |
-| `account_name` | String | 是 | 账号昵称 |
-| `account_douyin_id` | String | 否 | 抖音号 |
-| `account_homepage_screenshot` | String | 否 | 主页截图，**URL 或 Base64** 均可；可传空串 |
-| `comment_history` | Array | 否 | 历史评论列表，元素见下 |
+
+| 字段                            | 类型     | 必填  | 说明                            |
+| ----------------------------- | ------ | --- | ----------------------------- |
+| `account_uid`                 | String | 是   | 账号唯一标识                        |
+| `account_name`                | String | 是   | 账号昵称                          |
+| `account_douyin_id`           | String | 否   | 抖音号                           |
+| `account_homepage_screenshot` | String | 否   | 主页截图，**URL 或 Base64** 均可；可传空串 |
+| `comment_history`             | Array  | 否   | 历史评论列表，元素见下                   |
+
 
 `comment_history` 元素：
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|:---:|------|
-| `video_title` | String | 是 | 评论所在视频标题 |
-| `comment_content` | String | 是 | 评论内容 |
-| `comment_time` | String | 是 | 评论时间（ISO 8601） |
-| `comment_like_count` | Integer | 否 | 评论获赞数（缺省 0） |
+
+| 字段                   | 类型      | 必填  | 说明             |
+| -------------------- | ------- | --- | -------------- |
+| `video_title`        | String  | 是   | 评论所在视频标题       |
+| `comment_content`    | String  | 是   | 评论内容           |
+| `comment_time`       | String  | 是   | 评论时间（ISO 8601） |
+| `comment_like_count` | Integer | 否   | 评论获赞数（缺省 0）    |
+
 
 **降级规则**：
 
 - `account_homepage_screenshot` 为空或识别失败 → 仅依赖评论历史分析，`value_score` 降 10-15 分（不低于等级区间下界）。
 - `comment_history` 为空 → 无法画像，直接返回 `has_value=false`。
 
+
+
 ### 结果（轮询响应中的 `result.results[]`）
 
 与输入 accounts **一一对应、顺序一致**，每个元素：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `account_uid` | String | 对应输入的账号 UID |
-| `has_value` | Boolean | 是否有线索价值 |
-| `intent_level` | String \| null | 意向等级：`"高"` / `"中"` / `"低"`（仅 `has_value=true`） |
-| `intent_level_code` | String \| null | 等级代码：`"high"` / `"medium"` / `"low"` |
-| `value_score` | Integer \| null | 价值评分 0-100（仅 `has_value=true`） |
-| `is_car_owner` | Boolean \| null | 是否车主（综合该账号全部历史评论与主页画像判定，口径同 Agent 1）；该条处理失败时为 `null` |
-| `has_purchase_intent` | Boolean \| null | 购车意向（综合判定，口径同 Agent 1）；该条处理失败时为 `null` |
-| `profile_tags` | Array\<String\> | 账号画像标签，如 `["已购车主", "智驾关注"]` |
-| `profile_summary` | String | 账号画像摘要（150-300 字） |
-| `analysis` | String | AI 分析过程说明（400-600 字） |
-| `processed_at` | String | 处理时间戳 |
-| `error` | String \| null | 该条处理失败时的错误信息（正常为 null） |
+
+| 字段                    | 类型             | 说明                                                   |
+| --------------------- | -------------- | ---------------------------------------------------- |
+| `account_uid`         | String         | 对应输入的账号 UID                                          |
+| `has_value`           | Boolean        | 是否有线索价值                                              |
+| `intent_level`        | String | null  | 意向等级：`"高"` / `"中"` / `"低"`（仅 `has_value=true`）       |
+| `intent_level_code`   | String | null  | 等级代码：`"high"` / `"medium"` / `"low"`                 |
+| `value_score`         | Integer | null | 价值评分 0-100（仅 `has_value=true`）                       |
+| `is_car_owner`        | Boolean | null | 是否车主（综合该账号全部历史评论与主页画像判定，口径同 Agent 1）；该条处理失败时为 `null` |
+| `has_purchase_intent` | Boolean | null | 购车意向（综合判定，口径同 Agent 1）；该条处理失败时为 `null`               |
+| `profile_tags`        | ArrayString    | 账号画像标签，如 `["已购车主", "智驾关注"]`                          |
+| `profile_summary`     | String         | 账号画像摘要（150-300 字）                                    |
+| `analysis`            | String         | AI 分析过程说明（400-600 字）                                 |
+| `processed_at`        | String         | 处理时间戳                                                |
+| `error`               | String | null  | 该条处理失败时的错误信息（正常为 null）                               |
+
 
 **意向等级与分数区间**：
 
-| 等级代码 | 中文 | 分数区间 | 典型特征 |
-|---------|------|---------|---------|
-| `high` | 高 | 85-100 | 明确购车意向 / 决策末期 / 已购车主（换购潜力） |
-| `medium` | 中 | 70-84 | 正在对比车型 / 决策中期 |
-| `low` | 低 | 50-69 | 初步了解 / 观望 / 决策前期 |
+
+| 等级代码     | 中文  | 分数区间   | 典型特征                       |
+| -------- | --- | ------ | -------------------------- |
+| `high`   | 高   | 85-100 | 明确购车意向 / 决策末期 / 已购车主（换购潜力） |
+| `medium` | 中   | 70-84  | 正在对比车型 / 决策中期              |
+| `low`    | 低   | 50-69  | 初步了解 / 观望 / 决策前期           |
+
+
+
 
 ### V1.1 行为变化：评级考量我方车型匹配度
 
@@ -229,6 +264,8 @@ API Key 由服务方分配。认证失败返回 `401`。
 
 ---
 
+
+
 ## 6. 轮询接口
 
 `GET /api/v1/jobs/{job_id}`
@@ -255,6 +292,8 @@ API Key 由服务方分配。认证失败返回 `401`。
 `GET /health`（无需认证）→ `{ "status": "ok" }`
 
 ---
+
+
 
 ## 8. 完整调用示例（Python）
 
