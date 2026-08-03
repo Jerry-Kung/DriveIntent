@@ -84,6 +84,8 @@ def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,
     if not has_value:
         return ProfileResult(
             account_uid="", has_value=False,
+            is_car_owner=out.is_car_owner,
+            has_purchase_intent=out.has_purchase_intent,
             profile_tags=list(out.profile_tags),
             profile_summary=out.profile_summary,
             analysis=out.analysis_text, processed_at=processed_at)
@@ -94,6 +96,8 @@ def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,
     return ProfileResult(
         account_uid="", has_value=True, intent_level=level,
         intent_level_code=code, value_score=score,
+        is_car_owner=out.is_car_owner,
+        has_purchase_intent=out.has_purchase_intent,
         profile_tags=list(out.profile_tags),
         profile_summary=out.profile_summary, analysis=out.analysis_text,
         processed_at=processed_at)

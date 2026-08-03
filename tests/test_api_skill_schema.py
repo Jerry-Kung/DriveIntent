@@ -55,3 +55,16 @@ def test_video_context_v11_dump_contains_new_fields():
                            use_case=["家用"]).model_dump()
     assert d["price_range_min"] == 90000
     assert d["vehicle_category"] == "微型车"
+
+
+def test_user_lead_result_v13_label_fields():
+    out = UserLeadResult(lead_grade="A", is_car_owner=True,
+                         has_purchase_intent=True)
+    assert out.is_car_owner is True
+    assert out.has_purchase_intent is True
+
+
+def test_user_lead_result_v13_label_defaults():
+    out = UserLeadResult(lead_grade="C")
+    assert out.is_car_owner is False
+    assert out.has_purchase_intent is False

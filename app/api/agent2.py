@@ -101,8 +101,10 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
             results.append({
                 "account_uid": account.account_uid, "has_value": False,
                 "intent_level": None, "intent_level_code": None,
-                "value_score": None, "profile_tags": [], "profile_summary": "",
-                "analysis": "", "processed_at": ts, "error": str(e)[:500]})
+                "value_score": None, "is_car_owner": None,
+                "has_purchase_intent": None, "profile_tags": [],
+                "profile_summary": "", "analysis": "", "processed_at": ts,
+                "error": str(e)[:500]})
         done += 1
         if progress_cb:
             progress_cb(done)

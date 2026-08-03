@@ -389,3 +389,40 @@ def test_v121_unconfigured_summary_renders_unknown_rule():
         "our_models_summary": summary})
     assert "未配置" in text
     assert "unknown" in text
+
+
+@pytest.mark.asyncio
+async def test_v13_profile_result_carries_labels():
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "s",
+        "evidence_comment_ids": ["x"], "confidence": 0.8,
+        "is_car_owner": True, "has_purchase_intent": True,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u9", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "想置换",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["is_car_owner"] is True
+    assert r["has_purchase_intent"] is True
+
+
+@pytest.mark.asyncio
+async def test_v13_profile_error_item_labels_null():
+    # LLM 无响应 → 该账号处理失败，两标签为 null
+    executor, gateway = _executor_and_gateway()
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u10", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "c",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["error"]
+    assert r["is_car_owner"] is None
+    assert r["has_purchase_intent"] is None

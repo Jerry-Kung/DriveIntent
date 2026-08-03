@@ -78,4 +78,8 @@ class UserLeadResult(BaseModel):
                                "unrelated", "unknown"] = "unknown"
     match_adjustment: int = 0  # -2 ~ +1，负为降级、正为上调
     match_reason: str | None = None
+    # V1.3：账号级独立标签，综合全部历史评论与主页画像判定。
+    # 无评论历史（has_value=false 空账号）时保持默认 false。
+    is_car_owner: bool = False
+    has_purchase_intent: bool = False
     confidence: float = 0.0

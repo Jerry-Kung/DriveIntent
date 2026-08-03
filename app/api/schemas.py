@@ -75,6 +75,9 @@ class ProfileResult(BaseModel):
     intent_level: str | None = None
     intent_level_code: str | None = None
     value_score: int | None = None
+    # V1.3：独立分析标签；该条处理失败时为 null
+    is_car_owner: bool | None = None
+    has_purchase_intent: bool | None = None
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis: str = ""

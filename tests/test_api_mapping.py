@@ -232,3 +232,23 @@ def test_screening_dict_passed_v11_data_falls_back():
         {"comment_id": "c", "is_meaningful": True,
          "comment_actor": "genuine_user",
          "is_purchase_related": False}) == "unrelated"
+
+
+def test_map_profile_carries_labels():
+    out = UserLeadResult(lead_grade="H", is_valid_lead=True, confidence=0.9,
+                         is_car_owner=True, has_purchase_intent=True)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.is_car_owner is True
+    assert r.has_purchase_intent is True
+
+
+def test_map_profile_no_value_still_carries_labels():
+    # has_value=false（如 C 级）仍透出两标签
+    out = UserLeadResult(lead_grade="C", is_valid_lead=True,
+                         is_car_owner=True, has_purchase_intent=False)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.is_car_owner is True
+    assert r.has_purchase_intent is False
