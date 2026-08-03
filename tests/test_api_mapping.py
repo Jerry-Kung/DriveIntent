@@ -205,7 +205,8 @@ def test_screened_out_category():
     from app.api.mapping import screened_out_category
     assert screened_out_category(
         {"comment_id": "c", "is_meaningful": True,
-         "comment_actor": "marketing_account"}) == "marketing"
+         "comment_actor": "marketing_account",
+         "has_purchase_intent": False}) == "marketing"
     assert screened_out_category(
         {"comment_id": "c", "is_meaningful": True,
          "has_purchase_intent": False, "is_car_owner": True}) == "no_intent"
@@ -217,3 +218,17 @@ def test_screened_out_category():
         {"comment_id": "c", "is_suspected_marketing": True}) == "marketing"
     assert screened_out_category(
         {"comment_id": "c", "is_purchase_related": False}) == "unrelated"
+
+
+def test_screening_dict_passed_v11_data_falls_back():
+    # V1.1~V1.2.1 落库数据：含 comment_actor 但无 has_purchase_intent，
+    # 必须回退旧口径，不得因新字段缺省被误判为无购买意向
+    from app.api.mapping import screened_out_category, screening_dict_passed
+    legacy = {"comment_id": "c", "is_meaningful": True,
+              "comment_actor": "genuine_user",
+              "is_purchase_related": True, "is_suspected_marketing": False}
+    assert screening_dict_passed(legacy) is True
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "genuine_user",
+         "is_purchase_related": False}) == "unrelated"

@@ -39,18 +39,12 @@ def resolve_filter_type(item: CommentScreeningItem) -> str:
     return "no_purchase_intent"
 
 
-def _is_legacy_screening(res: dict) -> bool:
-    """判断落库结果是否为 V1.3 之前的历史格式（无两标签相关字段）。"""
-    return "has_purchase_intent" not in res and "comment_actor" not in res
-
-
 def screening_dict_passed(res: dict) -> bool:
     """对落库的初筛结果 dict 判定是否通过初筛（8000 与 8100 同口径）。
 
-    V1.3 之前的历史结果（无 has_purchase_intent / comment_actor 键）
-    回退旧口径。
+    V1.3 之前的历史结果（无 has_purchase_intent 键）回退旧口径。
     """
-    if _is_legacy_screening(res):
+    if "has_purchase_intent" not in res:
         return bool(res.get("is_purchase_related")
                     and not res.get("is_suspected_marketing"))
     item = CommentScreeningItem.model_validate(res)
@@ -59,7 +53,7 @@ def screening_dict_passed(res: dict) -> bool:
 
 def screened_out_category(res: dict) -> str:
     """未通过评论的展示分类：marketing / no_intent / unrelated。"""
-    if _is_legacy_screening(res):
+    if "has_purchase_intent" not in res:
         return ("marketing" if res.get("is_suspected_marketing")
                 else "unrelated")
     item = CommentScreeningItem.model_validate(res)
