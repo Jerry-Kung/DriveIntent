@@ -41,3 +41,35 @@ def _bucket(db, col, granularity: str):
         return func.date_format(
             func.date_add(col, text("INTERVAL 8 HOUR")), fmt)
     return func.strftime(fmt, func.datetime(col, "+8 hours"))
+
+
+def _empty_job_row(bucket: str, job_type: str) -> dict:
+    return {"bucket": bucket, "job_type": job_type,
+            "received": 0, "success": 0, "partial": 0, "failed": 0}
+
+
+def job_stats(db, granularity: str,
+              start_utc: datetime, end_utc: datetime) -> list[dict]:
+    """任务量明细：接收量按 created_at 分桶，完成量按 finished_at 分桶。"""
+    rows: dict[tuple[str, str], dict] = {}
+    created = _bucket(db, ApiJob.created_at, granularity)
+    for bucket, job_type, n in (
+            db.query(created, ApiJob.job_type, func.count())
+            .filter(ApiJob.created_at >= start_utc,
+                    ApiJob.created_at < end_utc)
+            .group_by(created, ApiJob.job_type)):
+        rows.setdefault((bucket, job_type),
+                        _empty_job_row(bucket, job_type))["received"] = n
+    finished = _bucket(db, ApiJob.finished_at, granularity)
+    for bucket, job_type, status, n in (
+            db.query(finished, ApiJob.job_type, ApiJob.status, func.count())
+            .filter(ApiJob.finished_at.isnot(None),
+                    ApiJob.finished_at >= start_utc,
+                    ApiJob.finished_at < end_utc)
+            .group_by(finished, ApiJob.job_type, ApiJob.status)):
+        row = rows.setdefault((bucket, job_type),
+                              _empty_job_row(bucket, job_type))
+        if status in ("success", "partial", "failed"):
+            row[status] = n
+    return sorted(rows.values(),
+                  key=lambda r: (r["bucket"], r["job_type"]), reverse=True)
