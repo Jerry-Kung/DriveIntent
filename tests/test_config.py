@@ -31,3 +31,21 @@ def test_api_worker_defaults():
     s = Settings()
     assert s.api_worker_enabled is True
     assert s.api_worker_concurrency == 3
+
+
+def test_multimodal_model_defaults_to_text_model():
+    # 未配置多模态模型时回退到文本模型（LLM_MODEL）
+    s = Settings(_env_file=None, llm_model="text-m")
+    assert s.llm_multimodal_model == ""
+    assert s.multimodal_model == "text-m"
+
+
+def test_multimodal_model_explicit_takes_precedence():
+    s = Settings(_env_file=None, llm_model="text-m",
+                 llm_multimodal_model="vision-m")
+    assert s.multimodal_model == "vision-m"
+
+
+def test_enable_thinking_defaults_false():
+    s = Settings(_env_file=None)
+    assert s.llm_enable_thinking is False

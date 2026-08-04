@@ -23,12 +23,70 @@ class FlakyProvider(MockProvider):
                                   temperature=temperature)
 
 
+class RecordingProvider(MockProvider):
+    """记录最近一次 chat 收到的 model。"""
+
+    def __init__(self):
+        super().__init__()
+        self.last_model = None
+
+    async def chat(self, messages, *, model, temperature):
+        self.last_model = model
+        return await super().chat(messages, model=model,
+                                  temperature=temperature)
+
+
 async def test_gateway_returns_text():
     provider = MockProvider()
     provider.queue('{"ok": true}')
     gw = LLMGateway(provider)
     resp = await gw.chat([{"role": "user", "content": "hi"}])
     assert resp.text == '{"ok": true}'
+
+
+async def test_gateway_text_default_uses_text_model(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_multimodal_model", "vision-m")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}])
+    assert provider.last_model == "text-m"
+
+
+async def test_gateway_multimodal_default_uses_multimodal_model(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_multimodal_model", "vision-m")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}], multimodal=True)
+    assert provider.last_model == "vision-m"
+
+
+async def test_gateway_multimodal_falls_back_to_text_when_unset(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_multimodal_model", "")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}], multimodal=True)
+    assert provider.last_model == "text-m"
+
+
+async def test_gateway_explicit_model_ignores_multimodal_flag(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_multimodal_model", "vision-m")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}],
+                  model="explicit-m", multimodal=True)
+    assert provider.last_model == "explicit-m"
 
 
 async def test_gateway_retries_then_succeeds(session):
@@ -72,6 +130,28 @@ async def test_openai_compat_provider_success():
     assert resp.text == "hello"
     assert resp.prompt_tokens == 3
     assert resp.completion_tokens == 5
+
+
+async def test_openai_compat_injects_enable_thinking(monkeypatch):
+    import app.llm.openai_compat as oc
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "hello"}}]})
+
+    monkeypatch.setattr(oc.settings, "llm_enable_thinking", True)
+    provider = _provider_with_transport(handler)
+    await provider.chat([{"role": "user", "content": "hi"}],
+                        model="gpt", temperature=0.1)
+    assert captured["body"]["enable_thinking"] is True
+
+    monkeypatch.setattr(oc.settings, "llm_enable_thinking", False)
+    await provider.chat([{"role": "user", "content": "hi"}],
+                        model="gpt", temperature=0.1)
+    assert captured["body"]["enable_thinking"] is False
 
 
 async def test_openai_compat_provider_non_json_body_raises_llm_error():

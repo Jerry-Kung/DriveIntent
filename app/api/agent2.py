@@ -27,6 +27,7 @@ async def recognize_screenshot(gateway: LLMGateway, screenshot: str) -> str:
                                   skill_version=config.version,
                                   prompt_version=config.prompt_version,
                                   model=config.model_name or None,
+                                  multimodal=config.multimodal,
                                   temperature=config.temperature)
         return resp.text.strip()
     except LLMError as e:

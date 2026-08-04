@@ -21,9 +21,12 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"          # openai_compat | mock
     llm_base_url: str = ""
     llm_api_key: str = ""
-    llm_model: str = "mock-model"
+    llm_model: str = "mock-model"       # 文本模型
+    llm_multimodal_model: str = ""      # 多模态模型；留空回退文本模型
     llm_timeout_seconds: int = 120
     llm_max_retries: int = 3
+    # 深度思考开关（全局）；对 openai_compat 请求注入 enable_thinking
+    llm_enable_thinking: bool = False
 
     worker_enabled: bool = True
     worker_concurrency: int = 3
@@ -36,6 +39,10 @@ class Settings(BaseSettings):
 
     # 我方在售车型配置（Agent2 评级用）
     our_models_config_path: str = "config/our_models.json"
+
+    @property
+    def multimodal_model(self) -> str:
+        return self.llm_multimodal_model or self.llm_model
 
     @property
     def api_keys_list(self) -> list[str]:

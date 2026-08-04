@@ -147,7 +147,14 @@ def test_v12_image_recognition_config_uses_v2():
     config = load_skill_config("image_recognition")
     assert config.prompt_file == "image_recognition_v2.txt"
     assert config.prompt_version == "v2"
-    assert config.version == "2.0"
+    # V1.4.1：模型选择路由变更，config version 升为 1.4.1（prompt 未动仍 v2）
+    assert config.version == "1.4.1"
+
+
+def test_v141_image_recognition_is_multimodal():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("image_recognition")
+    assert config.multimodal is True
 
 
 def test_v12_image_recognition_prompt_asks_structured_json():

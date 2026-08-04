@@ -61,7 +61,9 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `LLM_PROVIDER` | `mock` | `mock`（本地假数据，联调用）或 `openai_compat`（真实模型） |
 | `LLM_BASE_URL` | 空 | OpenAI 兼容接口地址，**须含 `/v1` 前缀**，如 `https://api.example.com/v1` |
 | `LLM_API_KEY` | 空 | 模型服务的 API Key |
-| `LLM_MODEL` | `mock-model` | 模型名；启用主页截图识别需模型支持图像输入 |
+| `LLM_MODEL` | `mock-model` | **文本模型**名；不使用多模态能力的节点（视频语境/评论初筛/用户分析）默认使用 |
+| `LLM_MULTIMODAL_MODEL` | 空 | **V1.4.1** 多模态模型名；主页截图识别等需图像输入的节点默认使用，**留空则回退到 `LLM_MODEL`**。与文本模型共用 `LLM_BASE_URL` / `LLM_API_KEY`，仅模型名不同 |
+| `LLM_ENABLE_THINKING` | `false` | **V1.4.1** 深度思考全局开关；`true` 时对 `openai_compat` 请求注入 `enable_thinking=true`。该字段为 Qwen/DashScope 等端点扩展项，严格校验未知参数的端点可能拒绝，默认 `false` 为安全路径 |
 | `LLM_TIMEOUT_SECONDS` | `120` | 单次 LLM 调用超时（秒） |
 | `LLM_MAX_RETRIES` | `3` | LLM 调用失败重试次数 |
 | `API_KEYS` | `change-me-key1,change-me-key2` | **对外 API 的访问密钥**，逗号分隔多个，**生产务必修改** |
@@ -292,7 +294,8 @@ python scripts/api_smoke_test.py
 | API 返回 401 | 请求头 `Authorization: Bearer <key>` 的 key 不在 `API_KEYS` 列表中 |
 | 提交任务后一直 `pending` | 确认 `WORKER_ENABLED` / `API_WORKER_ENABLED` 为 `true`，查看日志是否有「Worker 已启动」 |
 | 真实模型调用失败/超时 | 检查 `LLM_BASE_URL` 是否含 `/v1`、`LLM_API_KEY` 是否有效、网络是否可达；必要时调大 `LLM_TIMEOUT_SECONDS` |
-| 主页截图识别不生效 | 确认 `LLM_MODEL` 支持图像输入，且 `LLM_PROVIDER=openai_compat` |
+| 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
+| 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
 | 日志出现 `QueuePool limit ... reached` | 并发连接需求超过连接池上限；调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`，或调低两类 Worker 并发与 `LLM_TIMEOUT_SECONDS` |
 

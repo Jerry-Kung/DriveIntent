@@ -19,6 +19,50 @@ def test_extract_json_with_fence():
         extract_json("完全不是 JSON")
 
 
+def test_skill_config_multimodal_defaults_false():
+    cfg = SkillConfig(skill_id="t", version="1.0", prompt_file="x.txt",
+                      prompt_version="v1")
+    assert cfg.multimodal is False
+
+
+def test_load_skill_config_reads_multimodal(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "vis.yaml").write_text(
+        'skill_id: vis\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  multimodal: true\n'
+        'prompt_file: vis_v1.txt\nprompt_version: "v1"\n', encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    cfg = ex.load_skill_config("vis")
+    assert cfg.multimodal is True
+
+
+async def test_executor_passes_multimodal_to_gateway(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"; prompt_dir = tmp_path / "prompts"
+    cfg_dir.mkdir(); prompt_dir.mkdir()
+    (cfg_dir / "demo.yaml").write_text(
+        'skill_id: demo\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  multimodal: true\nprompt_file: demo_v1.txt\n'
+        'prompt_version: "v1"\n', encoding="utf-8")
+    (prompt_dir / "demo_v1.txt").write_text("$q", encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(ex, "PROMPT_DIR", prompt_dir)
+
+    captured = {}
+
+    class Gw:
+        async def chat(self, messages, **kwargs):
+            captured.update(kwargs)
+            from app.llm.base import LLMResponse
+            return LLMResponse(text='{"answer": "好"}')
+
+    executor = SkillExecutor(Gw(), max_retries=1)
+    await executor.run("demo", {"q": "hi"}, Out)
+    assert captured["multimodal"] is True
+
+
 def test_render_prompt_keeps_json_braces():
     cfg = SkillConfig(skill_id="t", version="1.0", prompt_file="x.txt",
                       prompt_version="v1")
