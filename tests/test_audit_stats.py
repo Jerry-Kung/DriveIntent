@@ -2,8 +2,8 @@ from datetime import datetime
 
 from sqlalchemy import inspect
 
-from app.services.audit_stats import utc_range, job_stats
-from app.models import ApiJob
+from app.services.audit_stats import utc_range, job_stats, llm_stats
+from app.models import ApiJob, LlmCallLog
 
 
 def test_audit_indexes_declared(session):
@@ -73,4 +73,39 @@ def test_job_stats_hour_buckets(session):
 def test_job_stats_empty(session):
     assert job_stats(session, "day",
                      datetime(2026, 7, 30), datetime(2026, 8, 3)) == []
+
+
+def _call(created, skill="comment_lead_screening", model="m1",
+          pt=100, ct=50, error=None, dur=800):
+    return LlmCallLog(skill_id=skill, model_name=model, prompt_tokens=pt,
+                      completion_tokens=ct, duration_ms=dur, error=error,
+                      created_at=created)
+
+
+def test_llm_stats_grouping_sums_and_errors(session):
+    day = datetime(2026, 8, 1, 4, 0)  # 东八区 08-01 12:00
+    session.add_all([
+        _call(day, pt=100, ct=50, dur=600),
+        _call(day, pt=200, ct=70, dur=1000, error="超时"),
+        _call(day, skill="user_lead_analysis", model="m2", pt=999, ct=1),
+    ])
+    session.commit()
+    rows = llm_stats(session, "day",
+                     datetime(2026, 7, 31, 16), datetime(2026, 8, 1, 16))
+    by_key = {(r["skill_id"], r["model_name"]): r for r in rows}
+    r1 = by_key[("comment_lead_screening", "m1")]
+    assert r1["bucket"] == "2026-08-01"
+    assert r1["calls"] == 2 and r1["errors"] == 1
+    assert r1["prompt_tokens"] == 300 and r1["completion_tokens"] == 120
+    assert r1["avg_duration_ms"] == 800
+    r2 = by_key[("user_lead_analysis", "m2")]
+    assert r2["calls"] == 1 and r2["errors"] == 0
+    assert r2["prompt_tokens"] == 999
+
+
+def test_llm_stats_range_filter(session):
+    session.add(_call(datetime(2026, 8, 1, 4, 0)))
+    session.commit()
+    assert llm_stats(session, "day",
+                     datetime(2026, 8, 2, 16), datetime(2026, 8, 3, 16)) == []
 

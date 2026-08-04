@@ -73,3 +73,27 @@ def job_stats(db, granularity: str,
             row[status] = n
     return sorted(rows.values(),
                   key=lambda r: (r["bucket"], r["job_type"]), reverse=True)
+
+
+def llm_stats(db, granularity: str,
+              start_utc: datetime, end_utc: datetime) -> list[dict]:
+    """LLM 消耗明细：每条 llm_call_log 为一次真实请求（含重试与失败）。"""
+    bucket = _bucket(db, LlmCallLog.created_at, granularity)
+    query = (
+        db.query(bucket, LlmCallLog.skill_id, LlmCallLog.model_name,
+                 func.count(),
+                 func.count(LlmCallLog.error),  # COUNT(col) 只计非空 → 失败数
+                 func.coalesce(func.sum(LlmCallLog.prompt_tokens), 0),
+                 func.coalesce(func.sum(LlmCallLog.completion_tokens), 0),
+                 func.avg(LlmCallLog.duration_ms))
+        .filter(LlmCallLog.created_at >= start_utc,
+                LlmCallLog.created_at < end_utc)
+        .group_by(bucket, LlmCallLog.skill_id, LlmCallLog.model_name))
+    rows = [
+        {"bucket": b, "skill_id": skill, "model_name": model,
+         "calls": calls, "errors": errors,
+         "prompt_tokens": int(pt), "completion_tokens": int(ct),
+         "avg_duration_ms": int(round(avg or 0))}
+        for b, skill, model, calls, errors, pt, ct, avg in query]
+    return sorted(rows, key=lambda r: (r["bucket"], r["skill_id"],
+                                       r["model_name"]), reverse=True)
