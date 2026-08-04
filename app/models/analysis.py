@@ -51,6 +51,7 @@ class AnalysisResult(Base):
 
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
+    __table_args__ = (Index("ix_llm_call_created", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     skill_id: Mapped[str] = mapped_column(String(64), default="")
