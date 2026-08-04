@@ -18,12 +18,16 @@ _LIMITS = {"day": (7, 90), "hour": (48, 168)}
 @audit_router.get("/audit")
 def audit_page(request: Request,
                granularity: str = "day",
-               range_: int | None = Query(default=None, alias="range"),
+               range_: str | None = Query(default=None, alias="range"),
                db=Depends(get_db)):
     if granularity not in _LIMITS:
         granularity = "day"
     default, cap = _LIMITS[granularity]
-    span = min(range_, cap) if range_ and range_ > 0 else default
+    try:
+        range_int = int(range_)
+    except (ValueError, TypeError):
+        range_int = None
+    span = min(range_int, cap) if range_int and range_int > 0 else default
     ctx = {"active": "audit", "granularity": granularity, "span": span,
            "error": None, "summary": None, "jobs": [], "llm": []}
     try:

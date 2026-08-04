@@ -36,3 +36,11 @@ def test_audit_page_empty_db(session):
     r = _client(session).get("/audit")
     assert r.status_code == 200
     assert "暂无数据" in r.text
+
+
+def test_audit_range_non_numeric_falls_back(session):
+    client = _client(session)
+    r = client.get("/audit?range=abc")
+    assert r.status_code == 200
+    # 回退到 day 默认 7
+    assert 'value="7"' in r.text
