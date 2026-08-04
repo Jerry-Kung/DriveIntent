@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import inspect
 
-from app.services.audit_stats import utc_range, job_stats, llm_stats
+from app.services.audit_stats import utc_range, job_stats, llm_stats, today_summary
 from app.models import ApiJob, LlmCallLog
 
 
@@ -108,4 +108,28 @@ def test_llm_stats_range_filter(session):
     session.commit()
     assert llm_stats(session, "day",
                      datetime(2026, 8, 2, 16), datetime(2026, 8, 3, 16)) == []
+
+
+def test_today_summary(session):
+    now_utc = datetime(2026, 8, 1, 10, 0)  # 东八区 08-01 18:00
+    session.add_all([
+        _job("j1", datetime(2026, 8, 1, 4, 0),
+             finished=datetime(2026, 8, 1, 5, 0), status="success"),
+        _job("j2", datetime(2026, 7, 31, 10, 0)),   # 昨天：不计
+        _call(datetime(2026, 8, 1, 4, 0), pt=100, ct=50),
+        _call(datetime(2026, 8, 1, 6, 0), pt=200, ct=70),
+    ])
+    session.commit()
+    s = today_summary(session, now_utc=now_utc)
+    assert s["jobs_received"] == 1
+    assert s["jobs_finished"] == 1
+    assert s["llm_calls"] == 2
+    assert s["prompt_tokens"] == 300
+    assert s["completion_tokens"] == 120
+
+
+def test_today_summary_empty(session):
+    s = today_summary(session)
+    assert s == {"jobs_received": 0, "jobs_finished": 0, "llm_calls": 0,
+                 "prompt_tokens": 0, "completion_tokens": 0}
 

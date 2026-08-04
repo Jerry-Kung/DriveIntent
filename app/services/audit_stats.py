@@ -97,3 +97,27 @@ def llm_stats(db, granularity: str,
         for b, skill, model, calls, errors, pt, ct, avg in query]
     return sorted(rows, key=lambda r: (r["bucket"], r["skill_id"],
                                        r["model_name"]), reverse=True)
+
+
+def today_summary(db, now_utc: datetime | None = None) -> dict:
+    """东八区今日汇总（now_utc 供测试注入当前时刻）。"""
+    start_utc, end_utc = utc_range("day", 1, now_utc=now_utc)
+    jobs_received = (
+        db.query(func.count()).select_from(ApiJob)
+        .filter(ApiJob.created_at >= start_utc,
+                ApiJob.created_at < end_utc).scalar())
+    jobs_finished = (
+        db.query(func.count()).select_from(ApiJob)
+        .filter(ApiJob.finished_at.isnot(None),
+                ApiJob.finished_at >= start_utc,
+                ApiJob.finished_at < end_utc).scalar())
+    llm_calls, prompt_tokens, completion_tokens = (
+        db.query(func.count(),
+                 func.coalesce(func.sum(LlmCallLog.prompt_tokens), 0),
+                 func.coalesce(func.sum(LlmCallLog.completion_tokens), 0))
+        .select_from(LlmCallLog)
+        .filter(LlmCallLog.created_at >= start_utc,
+                LlmCallLog.created_at < end_utc).one())
+    return {"jobs_received": jobs_received, "jobs_finished": jobs_finished,
+            "llm_calls": llm_calls, "prompt_tokens": int(prompt_tokens),
+            "completion_tokens": int(completion_tokens)}
