@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}DriveIntent - 审计统计{% endblock %}
+
+{% block content %}
+  {% if error %}
+  <section class="card"><span class="bad-text">{{ error }}</span></section>
+  {% endif %}
+
+  {% if summary %}
+  <section class="stats">
+    <div class="card stat">
+      <div class="stat-num num">{{ summary.jobs_received }}</div>
+      <div class="hint">今日任务接收</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-num num">{{ summary.jobs_finished }}</div>
+      <div class="hint">今日任务完成</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-num num">{{ summary.llm_calls }}</div>
+      <div class="hint">今日 LLM 调用</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-num num">{{ "{:,}".format(summary.prompt_tokens) }}</div>
+      <div class="hint">今日输入 tokens</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-num num">{{ "{:,}".format(summary.completion_tokens) }}</div>
+      <div class="hint">今日输出 tokens</div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <form method="get" action="/audit" class="row">
+      <label>粒度
+        <select name="granularity">
+          <option value="day" {% if granularity == 'day' %}selected{% endif %}>按天</option>
+          <option value="hour" {% if granularity == 'hour' %}selected{% endif %}>按小时</option>
+        </select>
+      </label>
+      <label>最近
+        <input type="number" name="range" value="{{ span }}" min="1"
+               style="width: 80px">
+        <span class="hint">{% if granularity == 'day' %}天（上限 90）{% else %}小时（上限 168）{% endif %}</span>
+      </label>
+      <button class="primary" type="submit">查询</button>
+      <span class="hint">时间均为北京时间（UTC+8）；刷新页面即为最新数据</span>
+    </form>
+  </section>
+
+  {% set job_names = {'comment_screening': '评论初筛',
+                      'profile_analysis': '画像分析'} %}
+  <section class="card flush">
+    <div class="card-head"><h2>任务量明细</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>时间</th><th>任务类型</th><th>接收</th>
+          <th>成功</th><th>部分成功</th><th>失败</th>
+        </tr></thead>
+        <tbody>
+          {% for r in jobs %}
+          <tr>
+            <td class="num">{{ r.bucket }}</td>
+            <td>{{ job_names.get(r.job_type, r.job_type) }}</td>
+            <td class="num">{{ r.received }}</td>
+            <td class="num {% if r.success %}ok-text{% endif %}">{{ r.success }}</td>
+            <td class="num">{{ r.partial }}</td>
+            <td class="num {% if r.failed %}bad-text{% endif %}">{{ r.failed }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not jobs %}<div class="empty">暂无数据</div>{% endif %}
+    </div>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head"><h2>LLM 消耗明细</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>时间</th><th>Skill</th><th>模型</th><th>调用次数</th>
+          <th>失败</th><th>输入 tokens</th><th>输出 tokens</th>
+          <th>平均耗时(ms)</th>
+        </tr></thead>
+        <tbody>
+          {% for r in llm %}
+          <tr>
+            <td class="num">{{ r.bucket }}</td>
+            <td>{{ r.skill_id }}</td>
+            <td>{{ r.model_name }}</td>
+            <td class="num">{{ r.calls }}</td>
+            <td class="num {% if r.errors %}bad-text{% endif %}">{{ r.errors }}</td>
+            <td class="num">{{ "{:,}".format(r.prompt_tokens) }}</td>
+            <td class="num">{{ "{:,}".format(r.completion_tokens) }}</td>
+            <td class="num">{{ r.avg_duration_ms }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not llm %}<div class="empty">暂无数据</div>{% endif %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_style %}
+    .stats { display: grid; gap: 14px; margin-bottom: 18px;
+             grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .stat { margin-bottom: 0; text-align: center; }
+    .stat-num { font-size: 26px; font-weight: 700; }
+    .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+{% endblock %}
