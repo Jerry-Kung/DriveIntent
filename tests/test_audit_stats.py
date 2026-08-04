@@ -57,8 +57,9 @@ def test_job_stats_day_buckets_timezone_and_status(session):
     assert r2["received"] == 2 and r2["failed"] == 1 and r2["success"] == 0
     r3 = by_key[("2026-08-02", "profile_analysis")]
     assert r3["received"] == 1 and r3["partial"] == 1
-    # 倒序：最新桶在前
-    assert rows[0]["bucket"] >= rows[-1]["bucket"]
+    # 倒序：最新桶在前，完整序列须严格倒序排列
+    buckets = [r["bucket"] for r in rows]
+    assert buckets == sorted(buckets, reverse=True)
 
 
 def test_job_stats_hour_buckets(session):

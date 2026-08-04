@@ -295,3 +295,17 @@ python scripts/api_smoke_test.py
 | 主页截图识别不生效 | 确认 `LLM_MODEL` 支持图像输入，且 `LLM_PROVIDER=openai_compat` |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
 | 日志出现 `QueuePool limit ... reached` | 并发连接需求超过连接池上限；调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`，或调低两类 Worker 并发与 `LLM_TIMEOUT_SECONDS` |
+
+---
+
+## 9. 存量库升级：补充索引脚本
+
+`create_all` 只为新增表建索引，不会给已存在的表补充新增索引。若在**已有数据库**基础上升级到 V1.4（而非全新部署），需在宿主机手动执行一次审计聚合所需的补索引脚本：
+
+```bash
+python scripts/add_audit_indexes.py
+```
+
+该脚本为 `llm_call_log(created_at)` 补 `ix_llm_call_created`、为 `api_job(finished_at)` 补 `ix_api_job_finished`，幂等可重复执行。**注意**：Docker 部署时 `scripts/` 目录不在镜像内，应在宿主机（有 `.env` 与 Python 环境处）直接运行，不要用 `docker compose exec app` 在容器内执行。
+
+全新部署无需执行此脚本，首次启动 `create_all` 会自动建出全部最新索引。

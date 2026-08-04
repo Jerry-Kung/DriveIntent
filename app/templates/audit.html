@@ -52,7 +52,9 @@
   {% set job_names = {'comment_screening': '评论初筛',
                       'profile_analysis': '画像分析'} %}
   <section class="card flush">
-    <div class="card-head"><h2>任务量明细</h2></div>
+    <div class="card-head"><h2>任务量明细</h2>
+      <span class="hint">同一行的"接收"按接收时间分桶，"成功/部分成功/失败"按完成时间分桶，跨桶完成的任务会落在不同行，不宜直接按行计算成功率</span>
+    </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
