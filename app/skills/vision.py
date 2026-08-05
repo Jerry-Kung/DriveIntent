@@ -1,15 +1,16 @@
-"""主页截图消息构造。
-
-截图只接受 http(s) URL（见 app/api/schemas.AccountObject）：服务端不再搬运
-图片本体，URL 直接透传给多模态模型，由模型侧自行拉取。
-"""
+def _to_image_url(screenshot: str) -> str:
+    s = screenshot.strip()
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    if s.startswith("data:"):
+        return s
+    return f"data:image/png;base64,{s}"
 
 
 def build_image_message(text: str, screenshot: str) -> list[dict]:
-    url = (screenshot or "").strip()
-    if not url:
+    if not screenshot or not screenshot.strip():
         return [{"role": "user", "content": text}]
     return [{"role": "user", "content": [
         {"type": "text", "text": text},
-        {"type": "image_url", "image_url": {"url": url}},
+        {"type": "image_url", "image_url": {"url": _to_image_url(screenshot)}},
     ]}]

@@ -17,11 +17,6 @@ class Settings(BaseSettings):
     db_pool_size: int = 15
     db_max_overflow: int = 15
     db_pool_timeout: int = 30
-    # FastAPI 同步端点在 anyio 线程池中执行，每个在途请求经 get_db() 独占一条
-    # 连接直到请求结束。anyio 默认 40 槽 > 连接池容量 30，超出的请求会阻塞在
-    # pool.connect() 上直到 pool_timeout 抛 QueuePool TimeoutError，并连带
-    # 拖垮抢同一个池的 worker。故显式收敛，且必须 ≤ pool_size + max_overflow。
-    web_threadpool_slots: int = 20
 
     llm_provider: str = "mock"          # openai_compat | mock
     llm_base_url: str = ""

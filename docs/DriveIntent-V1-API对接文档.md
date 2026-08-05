@@ -1,6 +1,6 @@
 # DriveIntent V1 API 对接文档
 
-**版本**：1.4.2　**更新日期**：2026-08-05　**服务默认端口**：8000
+**版本**：1.3　**更新日期**：2026-08-03　**服务默认端口**：8000
 
 DriveIntent 提供两个异步分析接口：**评论价值初筛**（Agent 1）与**账号画像精筛**（Agent 2）。两者均采用「提交任务 → 轮询结果」模式，适配长耗时的 LLM 分析场景。
 
@@ -181,7 +181,7 @@ API Key 由服务方分配。认证失败返回 `401`。
 | `account_uid`                 | String | 是   | 账号唯一标识                        |
 | `account_name`                | String | 是   | 账号昵称                          |
 | `account_douyin_id`           | String | 否   | 抖音号                           |
-| `account_homepage_screenshot` | String | 否   | 主页截图，**只接受 http/https URL**；无截图传空串。传 Base64 / data URI 返回 `422` |
+| `account_homepage_screenshot` | String | 否   | 主页截图，**URL 或 Base64** 均可；可传空串 |
 | `comment_history`             | Array  | 否   | 历史评论列表，元素见下                   |
 
 
@@ -200,11 +200,6 @@ API Key 由服务方分配。认证失败返回 `401`。
 
 - `account_homepage_screenshot` 为空或识别失败 → 仅依赖评论历史分析，`value_score` 降 10-15 分（不低于等级区间下界）。
 - `comment_history` 为空 → 无法画像，直接返回 `has_value=false`。
-
-> **注意（截图只收 URL）**：`account_homepage_screenshot` 传 Base64 或 `data:` URI 会直接
-> 返回 `422`，**整个请求不会入队**。请先把截图上传到对接方自有的对象存储/图床，再把可公网
-> 访问的 http/https URL 填入该字段；服务端只保存这个 URL，图片本体由多模态模型侧按 URL 拉取。
-> 变更原因见「9. 变更记录」。
 
 
 
@@ -330,24 +325,6 @@ for r in job["result"]["results"]:
     elif r["passed"]:
         print(f"{r['comment_id']} 通过初筛")
 ```
-
----
-
-## 9. 变更记录
-
-### 2026-08-05：`account_homepage_screenshot` 改为只接受 URL（**对接方需改造**）
-
-**变更**：该字段不再接受 Base64 / `data:` URI，只接受 http/https URL 或空串；违反时整个提交返回 `422`。
-
-**原因**：Base64 截图使单次提交的请求体达到 MB 级（实测截图占请求体积 99.9%，单账号最大
-25MB）。服务端落库时需长时间占用数据库连接，是生产环境连接池耗尽（`QueuePool limit ...
-connection timed out`）的直接放大因素。改为只存 URL 后，服务端不再搬运图片本体。
-
-**对接方改造**：截图先上传至自有对象存储/图床，把可公网访问的 URL 填入该字段。改造完成前，
-`POST /api/v1/profile-analysis` 若仍传 Base64 会全量返回 `422`；如需临时绕过，可先传空串
-（走截图缺失的降级路径，`value_score` 降 10-15 分）。
-
-**不受影响**：响应字段结构、评论价值初筛（Agent 1）接口、轮询接口均无变化。
 
 ---
 
