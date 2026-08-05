@@ -16,7 +16,9 @@ class ApiJob(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_type: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16), default="pending")
-    request_payload: Mapped[dict | None] = mapped_column(JSON)
+    # deferred：payload 可达 MB 级（含 base64 截图），状态轮询/认领查询
+    # 不搬运该列，worker 访问属性时才按需加载
+    request_payload: Mapped[dict | None] = mapped_column(JSON, deferred=True)
     result: Mapped[dict | None] = mapped_column(JSON)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)
     progress_done: Mapped[int] = mapped_column(Integer, default=0)
