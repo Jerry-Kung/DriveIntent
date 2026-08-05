@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-05（随 V1.4.4 发布）
+> 最后更新：2026-08-05（随 V1.4.5 发布）
 
 ## 能力快照
 
@@ -12,7 +12,7 @@
   - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）。
   - **后端审计（V1.4）**：内部页 `/audit` 按东八区自然天/小时展示 API 任务量（接收/成功/部分成功/失败）与 LLM 消耗（调用次数/失败/输入输出 tokens/平均耗时，按 skill × 模型细分）；纯只读模块，数据源为既有 `api_job` / `llm_call_log` 落库。
 - **架构要点**：API 路径（`api_job` 表 + ApiJobWorker，纯异步轮询，不写 lead 表）与 V0 流水线路径（lead 表 + Web 页面）并存，共享 LLM Gateway / Skill 执行器 / Prompt 模板层。
-- **数据库会话纪律（V1.4.3 + V1.4.4）**：两类 Worker 均不得在 LLM 调用期间持有数据库连接，且**不得在事件循环内执行同步 DB 调用**。API Worker 的 `run_once` 按「认领 → 执行 → 落状态」拆为三段独立短会话，`_execute` 只接纯数据不接 ORM 对象；三段会话与 reaper 全部经 `asyncio.to_thread` 执行（V1.4.4：同步大读取会冻结整个事件循环——实测远程读 13MB payload 阻塞 3.2s，期间所有协程与 HTTP 请求停摆，是连接池耗尽的直接成因）。业务 Worker 的认领/落状态/推进三处同步调用同样经线程池。进度回调 `progress_cb` 相应改为 async。对应回归测试：`tests/test_api_worker_session.py`、`tests/test_pipeline_connection_release.py`、`tests/test_event_loop_not_blocked.py`。
+- **数据库会话纪律（V1.4.3 + V1.4.4 + V1.4.5）**：两类 Worker 均不得在 LLM 调用期间持有数据库连接，且**不得在事件循环内执行同步 DB 调用**。API Worker 的 `run_once` 按「认领 → 执行 → 落状态」拆为三段独立短会话，`_execute` 只接纯数据不接 ORM 对象；三段会话与 reaper 全部经 `asyncio.to_thread` 执行（V1.4.4：同步大读取会冻结整个事件循环——实测远程读 13MB payload 阻塞 3.2s，期间所有协程与 HTTP 请求停摆，是连接池耗尽的直接成因；V1.4.5：**LLM 调用日志落库是漏网的另一处高频同步 DB 写入**——实测 3 小时 6703 行约为作业数 27 倍，池耗尽时在事件循环内同步等 `pool_timeout`（30s）且异常被吞、报错全落在受害者调用点上，本次 149 次 QueuePool 报错即由此放大）。业务 Worker 的认领/落状态/推进三处同步调用同样经线程池。进度回调 `progress_cb` 相应改为 async。对应回归测试：`tests/test_api_worker_session.py`、`tests/test_pipeline_connection_release.py`、`tests/test_event_loop_not_blocked.py`、`tests/test_llm_log_not_blocking.py`。
 - **截图存储模型（V1.4.4）**：数据库不存 base64 原始截图。POST 接收 base64 后抽入落盘暂存区（`data/staging/<job_id>.json`，docker 需挂载 `./data:/app/data`），payload 中该字段置空后落库；Worker 认领时读回识图，识图纯文本在作业终态写回 `payload.accounts[].homepage_vision_text`，终态即删暂存文件（重试期间保留）。识图失败或暂存缺失均降级为无截图继续，作业不失败。**对外契约不变**——调用方仍传 base64。存量作业 payload 内联 base64 的路径保留兼容。
 - **LLM 调用（V1.4.1）**：模型配置拆分为文本模型（`LLM_MODEL`）与多模态模型（`LLM_MULTIMODAL_MODEL`，留空回退文本）；节点通过 Skill 配置 `model.multimodal` 声明能力需求（当前仅识图为 true），由 Gateway 路由默认模型。深度思考全局开关 `LLM_ENABLE_THINKING`（默认关）对 openai_compat 请求注入 `enable_thinking`。
 - **Skill/Prompt 版本对照（现行）**：
@@ -41,8 +41,12 @@
 | V1.4.2 | 2026-08-05 | **已回退**（a57b1f7）：线程池收敛 + 截图强制 URL；根因判断有误且含破坏性契约变更，上线报错后整体撤回 | — |
 | V1.4.3 | 2026-08-05 | 补丁：连接池耗尽根因修复——API Worker 会话生命周期改造（LLM 期间零连接持有），契约不变 | [design](V1.4/v1.4.3-design.md) |
 | V1.4.4 | 2026-08-05 | 补丁：连接池耗尽真因修复——同步 DB IO 移出事件循环（to_thread）+ base64 截图不入库改存识图文本（落盘暂存区），契约不变 | [design](V1.4/v1.4.4-design.md) |
+| V1.4.5 | 2026-08-05 | 补丁：连接池耗尽放大器修复——LLM 调用日志落库（全系统最高频 DB 写入）移出事件循环，`_log` 拆同步体 + async to_thread，契约不变 | [design](V1.4/v1.4.5-design.md) |
 
-> **V1.4.4 已在测试环境验证闭环**（2026-08-05）：上线后未再观察到 `QueuePool limit reached`。
-> 存量处置：升级前积压的 1807 行 `pending`（其中 `profile_analysis` 652 行占 8240MB）经确认已过时效，
-> 按用户决策用 `scripts/clear_pending_queue.py` 直接清空——V1.4.4 的新逻辑对存量 payload 不生效，
-> 这批老作业只有被消费到终态或显式清空才会释放体积。问题定位用的一次性诊断脚本已随之删除。
+> **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
+> 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次
+> TimeoutError，静默间隔为 `pool_timeout` 的 30s 整数倍）。真因是 V1.4.4 遗漏的
+> LLM 日志落库同步写库（3 小时 6703 行 ≈ 作业数 27 倍，异常被吞、报错全落在
+> 受害者调用点上）。V1.4.5 已修复并新增 `tests/test_llm_log_not_blocking.py` 守护；
+> **测试环境验证待 V1.4.5 上线后观察**。存量处置与部署核对见 V1.4.4 条目；
+> MySQL `max_connections=151` 已打满，调大步骤见部署文档 §7。

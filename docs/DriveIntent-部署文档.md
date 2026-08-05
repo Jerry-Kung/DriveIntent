@@ -1,6 +1,6 @@
 # DriveIntent 部署文档
 
-**版本**：V1.4.4　**更新日期**：2026-08-05　**服务默认端口**：8000
+**版本**：V1.4.5　**更新日期**：2026-08-05　**服务默认端口**：8000
 
 本文档描述如何在一台**全新服务器**上从零启动 DriveIntent。提供两种方式：
 
@@ -346,8 +346,70 @@ V1.4.4 生效后新建作业的 `payload_kb` 应为几十到几百 KB。**若仍
   SHOW STATUS LIKE 'Max_used_connections';     -- 历史峰值
   ```
 
-  峰值贴近甚至等于上限，说明数据库侧已被打满，此时**调大 `DB_POOL_SIZE` 无效**——只是把排队从连接池挪到数据库。MySQL 默认 `max_connections=151` 对本服务偏小，生产建议 ≥500。
+  峰值贴近甚至等于上限，说明数据库侧已被打满，此时**调大 `DB_POOL_SIZE` 无效**——只是把排队从连接池挪到数据库。MySQL 默认 `max_connections=151` 对本服务偏小，生产建议 ≥500。调大步骤见下节「7.1 调大 MySQL max_connections」。
 - **日志**：应用日志输出到标准输出，Compose 下用 `docker compose logs`，systemd 下用 `journalctl -u driveintent`。
+
+### 7.1 调大 MySQL `max_connections`（V1.4.5）
+
+仅库内账号 `*.*` 上有 `USAGE` 权限（无 `SUPER` / `SYSTEM_VARIABLES_ADMIN`）时，
+`SET GLOBAL` 会报 1227。必须用 DB 主机上的 root 操作。环境为自建 MySQL 8.2
+（`datadir=/var/lib/mysql/`）时，登入 DB 主机执行：
+
+**方法 A：`SET PERSIST`（推荐，免重启且永久生效）**
+
+MySQL 8.0+ 专有：改运行时值并写入 `mysqld-auto.cnf`，重启后仍在。
+
+```sql
+mysql -u root -p
+SET PERSIST max_connections = 500;
+```
+
+`max_connections` 是动态变量，**立即生效、无需重启、不断开现有连接**。
+
+**方法 B：改配置文件（需重启）**
+
+```ini
+# /etc/my.cnf 或 /etc/mysql/mysql.conf.d/mysqld.cnf
+[mysqld]
+max_connections = 500
+```
+
+```bash
+systemctl restart mysqld
+```
+
+> **优先级坑**：`mysqld-auto.cnf`（`SET PERSIST` 写入）会**覆盖** `my.cnf`。
+> 以后改了 `my.cnf` 却不生效，多半是被它盖住，用 `RESET PERSIST max_connections;` 清掉。
+
+**验证生效：**
+
+```sql
+SHOW VARIABLES LIKE 'max_connections';        -- 应为 500
+SHOW VARIABLES LIKE 'open_files_limit';       -- 关键，见下
+SELECT * FROM performance_schema.persisted_variables;  -- 确认已持久化
+```
+
+**⚠️ 必须同步处理：文件描述符上限**
+
+MySQL 按 `10 + max_connections + table_open_cache × 2` 申请 fd。
+151 → 500 时需求从 `10 + 151 + 4000×2 = 8161` 涨到 `10 + 500 + 8000 = 8510`。
+**系统给不到时 MySQL 不报错，而是静默调小 `table_open_cache`**（仅错误日志留
+一行 warning），表缓存命中率下降、性能变差。请同步抬高 systemd 限制并重启：
+
+```bash
+mkdir -p /etc/systemd/system/mysqld.service.d
+cat > /etc/systemd/system/mysqld.service.d/limits.conf <<'EOF'
+[Service]
+LimitNOFILE=65535
+EOF
+
+systemctl daemon-reload
+systemctl restart mysqld
+```
+
+重启后确认 `open_files_limit` ≥ 8510。想免重启先缓解时，可只做方法 A，
+等有重启窗口再补 fd 这步。内存方面无需担心：`innodb_buffer_pool_size`
+128MB（默认值）下 500 连接每线程栈开销很小。
 
 ---
 
@@ -364,7 +426,7 @@ V1.4.4 生效后新建作业的 `payload_kb` 应为几十到几百 KB。**若仍
 | 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
 | 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
-| 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ **V1.4.4**（该版本修复了真因：同步 DB 调用在事件循环内执行，读一条 13MB payload 会冻结整个循环约 3.2s，期间所有协程与 HTTP 请求停摆；V1.4.3 只修了会话生命周期，不足以消除该现象）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话，或 async 函数内遗留未经 `asyncio.to_thread` 的同步 DB 调用；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧 |
+| 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ **V1.4.5**。历次根因：V1.4.3 会话生命周期（worker LLM 期间死握连接）、V1.4.4 事件循环内同步读 13MB payload（冻结 3.2s）、**V1.4.5 LLM 调用日志落库在事件循环内同步取连接**（全系统最高频 DB 写入，实测 3 小时 6703 行 ≈ 作业数 27 倍；池耗尽时阻塞满 `pool_timeout` 30s 且异常被吞、报错全落在受害者调用点上——报错清单里看不到它）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话，或 async 函数内遗留未经 `asyncio.to_thread` 的同步 DB 调用；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧；调大步骤见 §7.1 |
 | 带截图的作业全部按"无截图"评级 | 检查截图暂存目录是否挂载且可写（compose 需 `./data:/app/data`，核对方法见 6.1 节 ②③）。启动日志会因目录不可写直接报错；若目录可写但作业仍降级，查日志中"截图暂存文件读取失败"或"主页截图识别失败"告警 |
 | 升级后新作业 payload 仍是 MB 级 | 容器还在跑旧镜像。`docker compose restart` 不会重建镜像，须 `docker compose up -d --build`；用 6.1 节 ① 的探针确认 |
 
