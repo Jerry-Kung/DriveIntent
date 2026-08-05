@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -85,6 +85,27 @@ def fail_or_retry(session: Session, job: ApiJob, error: str) -> None:
         job.finished_at = datetime.utcnow()
         _strip_screenshots(job)
     session.commit()
+
+
+def fail_stale_running_jobs(session: Session,
+                            max_age_minutes: int) -> int:
+    """把超时未更新的 running 作业直接判失败（不重试）。
+
+    兜底场景：worker 认领后因进程崩溃/连接池异常等原因遗弃作业，
+    作业永远停在 running。以 updated_at 判停滞（set_progress 会刷新
+    该列，正常执行中的长作业不会被误杀）。
+    """
+    cutoff = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+    stale = (session.query(ApiJob).filter(
+        ApiJob.status == "running", ApiJob.updated_at < cutoff).all())
+    for job in stale:
+        job.status = "failed"
+        job.error = f"作业停滞超过 {max_age_minutes} 分钟，已强制判定失败"
+        job.finished_at = datetime.utcnow()
+        _strip_screenshots(job)
+    if stale:
+        session.commit()
+    return len(stale)
 
 
 def reset_running_jobs(session: Session) -> int:

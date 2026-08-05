@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     api_keys: str = ""
     api_worker_enabled: bool = True
     api_worker_concurrency: int = 3
+    # running 作业超过该分钟数无进度更新即判失败（不重试），兜底
+    # worker 崩溃/连接池异常导致的遗弃作业
+    api_job_stale_minutes: int = 30
 
     # 我方在售车型配置（Agent2 评级用）
     our_models_config_path: str = "config/our_models.json"

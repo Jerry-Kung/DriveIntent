@@ -3,7 +3,8 @@ import logging
 
 from app.api.agent1 import run_comment_screening
 from app.api.agent2 import run_profile_analysis
-from app.api.jobs import claim_next_job, fail_or_retry, finish_job, set_progress
+from app.api.jobs import (claim_next_job, fail_or_retry, fail_stale_running_jobs,
+                          finish_job, set_progress)
 from app.api.schemas import CommentScreeningRequest, ProfileAnalysisRequest
 from app.config import settings
 
@@ -79,7 +80,30 @@ class ApiJobWorker:
             if not worked:
                 await asyncio.sleep(self.poll_interval)
 
+    async def reap_stale_once(self) -> int:
+        """回收停滞 running 作业：超时直接判失败（不重试）。"""
+        session = self.session_factory()
+        try:
+            n = fail_stale_running_jobs(
+                session, settings.api_job_stale_minutes)
+            if n:
+                logger.warning("回收停滞 running 作业 %d 个（超过 %d 分钟未更新）",
+                               n, settings.api_job_stale_minutes)
+            return n
+        finally:
+            session.close()
+
+    async def _reaper_loop(self, stop_event: asyncio.Event) -> None:
+        # 每分钟扫一次即可；阈值按 updated_at 判定，误差一分钟无影响
+        while not stop_event.is_set():
+            try:
+                await self.reap_stale_once()
+            except Exception:
+                logger.exception("停滞作业回收循环异常")
+            await asyncio.sleep(60)
+
     async def run_forever(self, stop_event: asyncio.Event) -> None:
         loops = [self._loop(stop_event)
                  for _ in range(settings.api_worker_concurrency)]
+        loops.append(self._reaper_loop(stop_event))
         await asyncio.gather(*loops)
