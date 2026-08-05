@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api import staging
 from app.api.jobs import reset_running_jobs
 from app.api.routes import api_router
 from app.api.worker import ApiJobWorker
@@ -11,6 +12,7 @@ from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm.gateway import build_gateway
 from app.logging_filters import install_access_log_filter
+from app.models import ApiJob
 from app.skills.executor import SkillExecutor
 from app.web.audit import audit_router
 from app.web.routes import router
@@ -30,9 +32,18 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("数据库就绪: %s@%s:%s/%s", settings.db_user,
                 settings.db_host, settings.db_port, settings.db_name)
+    # V1.4.4 截图暂存区：目录不可写会导致所有带截图的作业降级为无截图，
+    # 故启动即校验并让问题显式暴露
+    staging.ensure_dir()
     with SessionLocal() as s:
         reset_running(s)
         reset_running_jobs(s)
+        # 回收无对应待处理作业的孤儿暂存文件（上次进程崩溃遗留）
+        active = {jid for (jid,) in s.query(ApiJob.id).filter(
+            ApiJob.status.in_(["pending", "running"])).all()}
+    removed = staging.reap_orphans(active)
+    if removed:
+        logger.info("清理孤儿截图暂存文件 %d 个", removed)
     stop_event = asyncio.Event()
     worker_task = None
     if settings.worker_enabled:

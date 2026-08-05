@@ -43,6 +43,7 @@ async def _screen_batch(executor: SkillExecutor, video_context: dict,
 async def run_comment_screening(executor: SkillExecutor,
                                 request: CommentScreeningRequest,
                                 *, progress_cb=None) -> dict:
+    """progress_cb 为 async 可调用（V1.4.4：进度落库经线程池执行）。"""
     # 按视频标题分组，语境结果在本次调用内缓存复用
     ctx_cache: dict[str, dict] = {}
     results: list[dict] = []
@@ -71,7 +72,7 @@ async def run_comment_screening(executor: SkillExecutor,
             items.update(batch_items)
             done += len(batch)
             if progress_cb:
-                progress_cb(done)
+                await progress_cb(done)
 
     # 按输入顺序回填，保证一一对应
     ts = now_iso()

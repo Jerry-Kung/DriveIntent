@@ -6,6 +6,10 @@ services:
     volumes:
       # V1.1 我方车型配置：宿主机生成 config/our_models.json 后重启生效
       - ./config:/app/config:ro
+      # V1.4.4 截图暂存区（可写）：base64 截图不入库，提交后暂存于此，
+      # worker 认领时读回识图，作业终态删除。必须挂载，否则容器重启会
+      # 丢失待处理作业的截图。容量需求见部署文档（峰值约 队列深度×13MB）
+      - ./data:/app/data
     ports:
       - "${APP_PORT:-8000}:8000"
     healthcheck:

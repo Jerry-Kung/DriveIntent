@@ -2,6 +2,7 @@ from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
+from app.api import staging
 from app.api.jobs import create_job, get_job
 from app.api.schemas import CommentScreeningRequest, ProfileAnalysisRequest
 from app.config import settings
@@ -48,8 +49,15 @@ def submit_comment_screening(request: CommentScreeningRequest,
                  dependencies=[Depends(require_api_key)])
 def submit_profile_analysis(request: ProfileAnalysisRequest,
                             db=Depends(get_db)):
-    job = create_job(db, "profile_analysis", request.model_dump(),
+    # V1.4.4：base64 截图不入库。抽到落盘暂存区，payload 中该字段置空后
+    # 再落库（单行由 MB 级降到 KB 级），worker 认领时读回识图。
+    payload = request.model_dump()
+    shots = staging.extract_screenshots(payload)
+    job = create_job(db, "profile_analysis", payload,
                      total=len(request.accounts))
+    if shots:
+        # 落库成功后再写暂存：反序会在建作业失败时留下孤儿文件
+        staging.save(job.id, shots)
     return {"job_id": job.id, "status": job.status,
             "type": job.job_type}
 

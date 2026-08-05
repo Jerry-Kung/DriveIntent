@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.api import staging
 from app.models import ApiJob
 
 
@@ -117,6 +118,7 @@ def fail_stale_running_jobs(session: Session,
     cutoff = datetime.utcnow() - timedelta(minutes=max_age_minutes)
     stale = (session.query(ApiJob).filter(
         ApiJob.status == "running", ApiJob.updated_at < cutoff).all())
+    reaped = [(j.id, j.job_type) for j in stale]
     for job in stale:
         job.status = "failed"
         job.error = f"作业停滞超过 {max_age_minutes} 分钟，已强制判定失败"
@@ -124,6 +126,10 @@ def fail_stale_running_jobs(session: Session,
         _strip_screenshots(job)
     if stale:
         session.commit()
+        # 已判终态，暂存截图不再需要
+        for job_id, job_type in reaped:
+            if job_type == "profile_analysis":
+                staging.discard(job_id)
     return len(stale)
 
 
@@ -134,23 +140,32 @@ def reset_running_jobs(session: Session) -> int:
     return n
 
 
-def _stripped_payload(payload) -> dict | None:
-    """返回清空截图后的 payload；无截图可清时返回 None（表示无需写回）。
+def _stripped_payload(payload, vision_text: dict | None = None) -> dict | None:
+    """返回清空截图（并写入识图文本）后的 payload；无需写回时返回 None。
 
     与 `_strip_screenshots` 同语义，但接收纯 dict、不触碰 ORM——供短会话
     路径在已持有 payload 时直接赋值，避免为剥离截图重新 SELECT 数 MB 大列。
+
+    V1.4.4：库中以纯文本 `homepage_vision_text` 替代 base64 截图，保留
+    "当时从截图里读出了什么"的可追溯性。
     """
     if not isinstance(payload, dict):
         return None
     accounts = payload.get("accounts")
     if not isinstance(accounts, list):
         return None
+    vision_text = vision_text or {}
     changed = False
     out_accounts = []
-    for acc in accounts:
-        if isinstance(acc, dict) and acc.get("account_homepage_screenshot"):
-            acc = dict(acc, account_homepage_screenshot="")
-            changed = True
+    for idx, acc in enumerate(accounts):
+        if isinstance(acc, dict):
+            text = vision_text.get(str(idx))
+            if acc.get("account_homepage_screenshot"):
+                acc = dict(acc, account_homepage_screenshot="")
+                changed = True
+            if text:
+                acc = dict(acc, homepage_vision_text=text)
+                changed = True
         out_accounts.append(acc)
     if not changed:
         return None
@@ -170,7 +185,8 @@ def set_progress_by_id(session_factory, job_id: str, done: int) -> None:
 
 def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
                      status: str, error: str | None,
-                     payload: dict | None = None) -> None:
+                     payload: dict | None = None,
+                     vision_text: dict | None = None) -> None:
     """落终态。传入 payload 时直接赋值已剥离版本，省去重读大列。"""
     with session_factory() as s:
         job = s.get(ApiJob, job_id)
@@ -184,32 +200,39 @@ def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
             if payload is None:
                 _strip_screenshots(job)          # 回退：自行加载后就地剥离
             else:
-                stripped = _stripped_payload(payload)
+                stripped = _stripped_payload(payload, vision_text)
                 if stripped is not None:
                     job.request_payload = stripped
         s.commit()
+    # 终态后暂存截图不再需要（提交在 commit 之后：先删后崩会丢截图）
+    if job is not None and job.job_type == "profile_analysis":
+        staging.discard(job_id)
 
 
 def fail_or_retry_by_id(session_factory, job_id: str, error: str,
-                        payload: dict | None = None) -> None:
+                        payload: dict | None = None,
+                        vision_text: dict | None = None) -> None:
     """失败重试/终态失败。终态时同样支持直接赋值已剥离 payload。"""
     with session_factory() as s:
         job = s.get(ApiJob, job_id)
         if job is None:
             return
+        job_type = job.job_type
         if job.attempt_count < job.max_attempts:
             job.status = "pending"
             job.error = error
             s.commit()
-            return
+            return                     # 仍要重试：暂存截图必须保留
         job.status = "failed"
         job.error = error
         job.finished_at = datetime.utcnow()
-        if job.job_type == "profile_analysis":
+        if job_type == "profile_analysis":
             if payload is None:
                 _strip_screenshots(job)
             else:
-                stripped = _stripped_payload(payload)
+                stripped = _stripped_payload(payload, vision_text)
                 if stripped is not None:
                     job.request_payload = stripped
         s.commit()
+    if job_type == "profile_analysis":
+        staging.discard(job_id)

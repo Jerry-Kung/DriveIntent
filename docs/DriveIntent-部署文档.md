@@ -1,6 +1,6 @@
 # DriveIntent 部署文档
 
-**版本**：V1.1　**更新日期**：2026-07-28　**服务默认端口**：8000
+**版本**：V1.4.4　**更新日期**：2026-08-05　**服务默认端口**：8000
 
 本文档描述如何在一台**全新服务器**上从零启动 DriveIntent。提供两种方式：
 
@@ -17,7 +17,7 @@
 |------|------|
 | 操作系统 | Linux / Windows Server 均可（示例以 Linux 为主） |
 | CPU / 内存 | 2 核 4G 起步；LLM 分析为 I/O 密集型，按并发量调整 |
-| 磁盘 | 10G 以上（含 MySQL 数据卷与镜像） |
+| 磁盘 | 10G 以上（含 MySQL 数据卷与镜像）。**V1.4.4 起另需为截图暂存区预留空间**：峰值约「待处理作业数 × 单作业截图体积」，实测单作业平均 13MB，队列深度 500 时约 7G，建议总可用空间 ≥ 20G |
 | 网络 | 若使用真实 LLM，需能访问 `LLM_BASE_URL` 指向的服务 |
 
 **方式一额外要求**：Docker 20.10+ 与 Docker Compose v2（`docker compose` 命令）。
@@ -74,6 +74,7 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `WORKER_POLL_INTERVAL` | `1.0` | Worker 轮询任务间隔（秒） |
 | `COMMENT_BATCH_SIZE` | `30` | 评论批处理条数 |
 | `OUR_MODELS_CONFIG_PATH` | `config/our_models.json` | **V1.1** 我方在售车型配置文件路径（生成方式见 3.2 节） |
+| `SCREENSHOT_STAGING_DIR` | `data/staging` | **V1.4.4** 截图暂存目录。base64 截图不入库，提交后暂存于此、worker 认领时读回识图、作业终态删除。**须为持久化目录**（Compose 已挂载 `./data:/app/data`），详见第 9 节 |
 | `INTENT_DOWNGRADE_ENABLED` | `true` | **V1.1** 非我方车型意向降级总开关；`false` 完全跳过匹配与降级（快速回退用） |
 
 **上线前至少修改三项**：`DB_PASSWORD`、`API_KEYS`、以及真实模型的 `LLM_PROVIDER` / `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
@@ -297,11 +298,44 @@ python scripts/api_smoke_test.py
 | 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
 | 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
-| 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ V1.4.3（该版本修复了 API Worker 在 LLM 调用期间死握连接的根因）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧 |
+| 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ **V1.4.4**（该版本修复了真因：同步 DB 调用在事件循环内执行，读一条 13MB payload 会冻结整个循环约 3.2s，期间所有协程与 HTTP 请求停摆；V1.4.3 只修了会话生命周期，不足以消除该现象）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话，或 async 函数内遗留未经 `asyncio.to_thread` 的同步 DB 调用；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧 |
+| 带截图的作业全部按"无截图"评级 | 检查截图暂存目录是否挂载且可写（compose 需 `./data:/app/data`）。启动日志会因目录不可写直接报错；若目录可写但作业仍降级，查日志中"截图暂存文件读取失败"或"主页截图识别失败"告警 |
 
 ---
 
-## 9. 存量库升级：补充索引脚本
+## 9. 截图暂存区（V1.4.4）
+
+V1.4.4 起 **base64 原始截图不再入库**：`POST /api/v1/profile-analysis` 仍照常接收 base64（**对外契约不变**），但服务端会把截图抽到落盘暂存区，库中只保留识图后的纯文本。这使 `api_job` 单行从 MB 级降回 KB 级——存量库中该表 6408MB 里有 9520MB 是 payload，而 result 仅 78MB。
+
+**部署要求**：compose 已挂载 `./data:/app/data`（可写）。**该挂载必须存在**，否则容器重启会丢失待处理作业的截图（丢失后作业降级为无截图继续，不会失败，但评级质量下降）。自建部署方式需保证 `SCREENSHOT_STAGING_DIR`（默认 `data/staging`）指向持久化目录。
+
+暂存文件在作业进入终态时自动删除，失败重试期间保留；进程崩溃遗留的孤儿文件在下次启动时自动回收。
+
+### 存量数据清理
+
+升级到 V1.4.4 后，历史 base64 仍留在库中，需手动清理。**须按顺序执行**：
+
+1. **先让待处理队列跑完**。`pending` 行是待处理业务数据（升级时实测 595 行 / 7984MB），清理脚本会主动跳过它们。
+2. 队列排空后清理历史终态行：
+
+```bash
+python scripts/cleanup_api_job_payload.py          # 预演，不写入
+python scripts/cleanup_api_job_payload.py --apply  # 确认后执行
+```
+
+脚本只清空 `profile_analysis` 终态行（success/partial/failed）payload 中的截图字段，**保留 `result`、`status`、时间戳、`progress_*`**（`/audit` 页面依赖这些列统计），`comment_screening` 的大 payload 是评论正文属业务数据不动。分批提交，默认 dry-run。
+
+3. 清理后物理空间需 `OPTIMIZE TABLE` 才回收（**会锁表，选业务低峰**）：
+
+```sql
+OPTIMIZE TABLE api_job;
+```
+
+与补索引脚本同理，Docker 部署时应在宿主机运行该脚本，不要用 `docker compose exec app`。
+
+---
+
+## 10. 存量库升级：补充索引脚本
 
 `create_all` 只为新增表建索引，不会给已存在的表补充新增索引。若在**已有数据库**基础上升级到 V1.4（而非全新部署），需在宿主机手动执行一次审计聚合所需的补索引脚本：
 

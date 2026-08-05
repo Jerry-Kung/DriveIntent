@@ -74,13 +74,19 @@ async def analyze_account(executor, account: AccountObject, vision_text: str,
 
 async def run_profile_analysis(executor, gateway: LLMGateway,
                                request: ProfileAnalysisRequest,
-                               *, progress_cb=None) -> dict:
+                               *, progress_cb=None,
+                               vision_sink: dict | None = None) -> dict:
+    """progress_cb 为 async 可调用（V1.4.4：进度落库经线程池执行）。
+
+    vision_sink：传入 dict 时，按账号下标收集识图文本，供调用方在终态写回
+    payload（V1.4.4：库中以纯文本替代 base64 截图）。不参与对外结果。
+    """
     results: list[dict] = []
     ts = now_iso()
     done = 0
     # 我方车型摘要与账号无关，整批只加载/构建一次，避免每账号重复加载与告警刷屏
     our_models_summary = build_our_models_summary(load_our_models())
-    for account in request.accounts:
+    for idx, account in enumerate(request.accounts):
         has_comments = len(account.comment_history) > 0
         try:
             if not has_comments:
@@ -90,6 +96,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 vision_text = await recognize_screenshot(
                     gateway, account.account_homepage_screenshot)
                 shot_available = bool(vision_text)
+                if vision_sink is not None and vision_text:
+                    vision_sink[str(idx)] = vision_text
                 out = await analyze_account(
                     executor, account, vision_text, our_models_summary)
             mapped = map_profile_result(
@@ -108,5 +116,5 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "error": str(e)[:500]})
         done += 1
         if progress_cb:
-            progress_cb(done)
+            await progress_cb(done)
     return {"results": results}

@@ -48,6 +48,9 @@ class AccountObject(BaseModel):
     account_name: str
     account_douyin_id: str | None = None
     account_homepage_screenshot: str = ""
+    # V1.4.4：库内以识图纯文本替代 base64 截图。对外契约未新增此字段——
+    # 调用方不传，仅服务端在作业终态写回 payload，保留可追溯性。
+    homepage_vision_text: str = ""
     comment_history: list[CommentHistoryItem] = []
 
 
