@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-04（随 V1.4.1 发布）
+> 最后更新：2026-08-05（随 V1.4.3 发布）
 
 ## 能力快照
 
@@ -12,6 +12,7 @@
   - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）。
   - **后端审计（V1.4）**：内部页 `/audit` 按东八区自然天/小时展示 API 任务量（接收/成功/部分成功/失败）与 LLM 消耗（调用次数/失败/输入输出 tokens/平均耗时，按 skill × 模型细分）；纯只读模块，数据源为既有 `api_job` / `llm_call_log` 落库。
 - **架构要点**：API 路径（`api_job` 表 + ApiJobWorker，纯异步轮询，不写 lead 表）与 V0 流水线路径（lead 表 + Web 页面）并存，共享 LLM Gateway / Skill 执行器 / Prompt 模板层。
+- **数据库会话纪律（V1.4.3）**：两类 Worker 均不得在 LLM 调用期间持有数据库连接。API Worker 的 `run_once` 按「认领 → 执行 → 落状态」拆为三段独立短会话，`_execute` 只接纯数据不接 ORM 对象（避免 deferred 的 `request_payload` 触发隐式 SELECT 并把连接钉在池外）；业务 Worker 在 pipeline 三个入口以 `session.commit()` 提前结束读取事务。由此连接占用与 Worker 并发数解耦。对应回归测试：`tests/test_api_worker_session.py`、`tests/test_pipeline_connection_release.py`。
 - **LLM 调用（V1.4.1）**：模型配置拆分为文本模型（`LLM_MODEL`）与多模态模型（`LLM_MULTIMODAL_MODEL`，留空回退文本）；节点通过 Skill 配置 `model.multimodal` 声明能力需求（当前仅识图为 true），由 Gateway 路由默认模型。深度思考全局开关 `LLM_ENABLE_THINKING`（默认关）对 openai_compat 请求注入 `enable_thinking`。
 - **Skill/Prompt 版本对照（现行）**：
 
@@ -36,3 +37,5 @@
 | V1.3 | 2026-08-03 | 评论/账号两级"车主/购车意向"独立标签、初筛规则重构（新增 no_purchase_intent）、视频语境降级模块下线、非本人意向 bugfix | [design](V1.3/design.md) / [plan](V1.3/plan.md) |
 | V1.4 | 2026-08-04 | 后端审计：任务量/LLM tokens 明细统计 + /audit 内置页面（只读，业务零改动） | [design](V1.4/design.md) / [plan](V1.4/plan.md) |
 | V1.4.1 | 2026-08-04 | 补丁：LLM 调用优化——文本/多模态模型拆分（识图走多模态、留空回退文本）+ 深度思考全局开关（enable_thinking，默认关） | [design](V1.4/v1.4.1-design.md) |
+| V1.4.2 | 2026-08-05 | **已回退**（a57b1f7）：线程池收敛 + 截图强制 URL；根因判断有误且含破坏性契约变更，上线报错后整体撤回 | — |
+| V1.4.3 | 2026-08-05 | 补丁：连接池耗尽根因修复——API Worker 会话生命周期改造（LLM 期间零连接持有），契约不变 | [design](V1.4/v1.4.3-design.md) |

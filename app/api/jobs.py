@@ -35,6 +35,25 @@ def claim_next_job(session: Session) -> ApiJob | None:
     return job
 
 
+def claim_next_job_detached(session: Session) -> dict | None:
+    """认领一个作业并把执行所需数据取成普通 dict，随后不再需要该会话。
+
+    V1.4.3：worker 不得在 LLM 调用期间持有连接。request_payload 是 deferred
+    列，若延后访问会重新开启事务、把连接钉在池外整个 LLM 期间；故在此一次性
+    读出，返回与 ORM 解耦的纯数据。
+    """
+    job = claim_next_job(session)
+    if job is None:
+        return None
+    # 在会话仍可用时读出 deferred 列，之后调用方不再触碰 ORM 对象
+    payload = job.request_payload
+    data = {"id": job.id, "job_type": job.job_type, "payload": payload,
+            "attempt_count": job.attempt_count}
+    # 结束读取事务，归还连接
+    session.commit()
+    return data
+
+
 def set_progress(session: Session, job: ApiJob, done: int) -> None:
     job.progress_done = done
     session.commit()
@@ -113,3 +132,84 @@ def reset_running_jobs(session: Session) -> int:
          .update({"status": "pending"}))
     session.commit()
     return n
+
+
+def _stripped_payload(payload) -> dict | None:
+    """返回清空截图后的 payload；无截图可清时返回 None（表示无需写回）。
+
+    与 `_strip_screenshots` 同语义，但接收纯 dict、不触碰 ORM——供短会话
+    路径在已持有 payload 时直接赋值，避免为剥离截图重新 SELECT 数 MB 大列。
+    """
+    if not isinstance(payload, dict):
+        return None
+    accounts = payload.get("accounts")
+    if not isinstance(accounts, list):
+        return None
+    changed = False
+    out_accounts = []
+    for acc in accounts:
+        if isinstance(acc, dict) and acc.get("account_homepage_screenshot"):
+            acc = dict(acc, account_homepage_screenshot="")
+            changed = True
+        out_accounts.append(acc)
+    if not changed:
+        return None
+    return dict(payload, accounts=out_accounts)
+
+
+# --- V1.4.3：按 id 操作的短会话入口 -------------------------------------
+# worker 在 LLM 期间不持有会话，状态更新时才临时开一个、用完立即关闭。
+# 每个函数自行管理会话生命周期，调用方无需持有 session。
+
+def set_progress_by_id(session_factory, job_id: str, done: int) -> None:
+    with session_factory() as s:
+        job = s.get(ApiJob, job_id)
+        if job is not None:
+            set_progress(s, job, done)
+
+
+def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
+                     status: str, error: str | None,
+                     payload: dict | None = None) -> None:
+    """落终态。传入 payload 时直接赋值已剥离版本，省去重读大列。"""
+    with session_factory() as s:
+        job = s.get(ApiJob, job_id)
+        if job is None:
+            return
+        job.result = result
+        job.status = status
+        job.error = error
+        job.finished_at = datetime.utcnow()
+        if job.job_type == "profile_analysis":
+            if payload is None:
+                _strip_screenshots(job)          # 回退：自行加载后就地剥离
+            else:
+                stripped = _stripped_payload(payload)
+                if stripped is not None:
+                    job.request_payload = stripped
+        s.commit()
+
+
+def fail_or_retry_by_id(session_factory, job_id: str, error: str,
+                        payload: dict | None = None) -> None:
+    """失败重试/终态失败。终态时同样支持直接赋值已剥离 payload。"""
+    with session_factory() as s:
+        job = s.get(ApiJob, job_id)
+        if job is None:
+            return
+        if job.attempt_count < job.max_attempts:
+            job.status = "pending"
+            job.error = error
+            s.commit()
+            return
+        job.status = "failed"
+        job.error = error
+        job.finished_at = datetime.utcnow()
+        if job.job_type == "profile_analysis":
+            if payload is None:
+                _strip_screenshots(job)
+            else:
+                stripped = _stripped_payload(payload)
+                if stripped is not None:
+                    job.request_payload = stripped
+        s.commit()

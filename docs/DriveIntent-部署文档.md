@@ -297,7 +297,7 @@ python scripts/api_smoke_test.py
 | 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
 | 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
-| 日志出现 `QueuePool limit ... reached` | 并发连接需求超过连接池上限；调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`，或调低两类 Worker 并发与 `LLM_TIMEOUT_SECONDS` |
+| 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ V1.4.3（该版本修复了 API Worker 在 LLM 调用期间死握连接的根因）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧 |
 
 ---
 
