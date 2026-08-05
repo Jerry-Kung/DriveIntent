@@ -8,10 +8,16 @@ def test_url_screenshot():
     assert content[1]["image_url"]["url"] == "https://cdn/x.png"
 
 
-def test_base64_screenshot_wrapped():
+def test_base64_no_longer_wrapped_passed_through_as_is():
+    """截图改为只接受 URL 后，vision 层不再拼 data-URI。
+
+    base64 已在 schema 层（AccountObject）被拒，正常流程走不到这里；
+    此处只锁定"不再做 data: 包装"这一行为，避免回退。
+    """
     msgs = build_image_message("t", "iVBORw0KGgoAAAA")
     url = msgs[0]["content"][1]["image_url"]["url"]
-    assert url.startswith("data:image/") and "base64,iVBORw0KGgoAAAA" in url
+    assert url == "iVBORw0KGgoAAAA"
+    assert not url.startswith("data:")
 
 
 def test_empty_screenshot_text_only():

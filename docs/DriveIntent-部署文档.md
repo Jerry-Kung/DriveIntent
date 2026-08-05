@@ -58,6 +58,7 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `DB_POOL_SIZE` | `15` | 数据库连接池常驻连接数 |
 | `DB_MAX_OVERFLOW` | `15` | 连接池溢出上限；并发连接上限 = `DB_POOL_SIZE + DB_MAX_OVERFLOW`，需覆盖两类 Worker 并发与 Web 请求峰值 |
 | `DB_POOL_TIMEOUT` | `30` | 等待可用连接的超时（秒），超时报 `QueuePool limit reached` |
+| `WEB_THREADPOOL_SLOTS` | `20` | **V1.4.2** Web 同步端点并发上限（anyio 线程池槽位）。每个在途请求独占一条 DB 连接直到请求结束，**必须 ≤ `DB_POOL_SIZE + DB_MAX_OVERFLOW`** 且留余量给两类 Worker；超出时启动自动下调并告警 |
 | `LLM_PROVIDER` | `mock` | `mock`（本地假数据，联调用）或 `openai_compat`（真实模型） |
 | `LLM_BASE_URL` | 空 | OpenAI 兼容接口地址，**须含 `/v1` 前缀**，如 `https://api.example.com/v1` |
 | `LLM_API_KEY` | 空 | 模型服务的 API Key |
@@ -297,7 +298,8 @@ python scripts/api_smoke_test.py
 | 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
 | 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
-| 日志出现 `QueuePool limit ... reached` | 并发连接需求超过连接池上限；调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`，或调低两类 Worker 并发与 `LLM_TIMEOUT_SECONDS` |
+| 日志出现 `QueuePool limit ... reached` | 首先核对 `WEB_THREADPOOL_SLOTS + 两类 Worker 并发` 是否超过 `DB_POOL_SIZE + DB_MAX_OVERFLOW`（启动日志会打印实际值），超了先调小 `WEB_THREADPOOL_SLOTS`。确需扩容连接池时，**必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从应用侧挪到 DB 侧 |
+| 提交 `/api/v1/profile-analysis` 返回 422 且提示截图 | **V1.4.2** 起 `account_homepage_screenshot` 只接受 http/https URL 或空串，不再接受 base64 / data URI；需对接方改传图片 URL，详见对接文档「9. 变更记录」 |
 
 ---
 

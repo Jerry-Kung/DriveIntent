@@ -41,9 +41,11 @@ def set_progress(session: Session, job: ApiJob, done: int) -> None:
 
 
 def _strip_screenshots(job: ApiJob) -> None:
-    """作业到达终态后清空 payload 中的 base64 截图，单行可从数 MB 降回 KB 级。
+    """作业到达终态后清空 payload 中残留的截图内容。
 
-    截图仅在处理时需要；终态后保留会拖慢所有加载该行的查询与备份。
+    自「截图只接受 URL」修复起，新作业的该字段只是一个短 URL，剥离已无
+    体积意义；但存量作业的 payload 里仍有 base64 本体（实测单行达 25MB），
+    保留本函数以便这些历史行在到达终态时仍能被压缩。
     只处理 profile_analysis 结构，其他 job_type 不触碰（也避免无谓触发
     deferred 列加载）。
     """

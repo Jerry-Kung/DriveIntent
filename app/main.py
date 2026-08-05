@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+import anyio.to_thread
 from fastapi import FastAPI
 
 from app.api.jobs import reset_running_jobs
@@ -25,11 +26,34 @@ logger = logging.getLogger(__name__)
 install_access_log_filter()
 
 
+def _apply_threadpool_limit() -> None:
+    """收敛 anyio 默认线程池，使并发同步请求数不超过连接池容量。
+
+    FastAPI 的同步（def）端点在该线程池中执行，每个在途请求经 get_db()
+    独占一条 DB 连接直到请求结束。anyio 默认 40 槽，而连接池容量为
+    pool_size + max_overflow；两者失配时超出的请求会阻塞在 pool.connect()
+    直到 pool_timeout 抛 QueuePool TimeoutError，并连带拖垮抢同一个池的
+    worker（claim_next）。
+    """
+    capacity = settings.db_pool_size + settings.db_max_overflow
+    slots = min(settings.web_threadpool_slots, capacity)
+    anyio.to_thread.current_default_thread_limiter().total_tokens = slots
+    if settings.web_threadpool_slots > capacity:
+        logger.warning(
+            "WEB_THREADPOOL_SLOTS=%d 超过连接池容量 %d，已下调至 %d",
+            settings.web_threadpool_slots, capacity, slots)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _apply_threadpool_limit()
     init_db()
     logger.info("数据库就绪: %s@%s:%s/%s", settings.db_user,
                 settings.db_host, settings.db_port, settings.db_name)
+    logger.info("连接池: size=%d overflow=%d 容量=%d，Web 线程池槽位=%d",
+                settings.db_pool_size, settings.db_max_overflow,
+                settings.db_pool_size + settings.db_max_overflow,
+                anyio.to_thread.current_default_thread_limiter().total_tokens)
     with SessionLocal() as s:
         reset_running(s)
         reset_running_jobs(s)
