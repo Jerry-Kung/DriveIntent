@@ -273,6 +273,63 @@ python scripts/api_smoke_test.py
 
 脚本依次验证健康检查、认证拦截、Agent 1 评论初筛、Agent 2 账号画像共 4 项，全部通过退出码为 0。
 
+### 6.1 V1.4.4 专项核对（升级到 V1.4.4 后必做）
+
+V1.4.4 改变了截图的存储方式。以下三项**任意一项不满足，服务都会退化**（截图丢失、或继续以 MB 级 payload 写库并重新引发连接池耗尽），且退化是静默的——业务不报错，只是评级质量下降。故升级后必须逐项确认。
+
+**① 确认容器跑的确实是 V1.4.4 代码**
+
+`app/api/staging.py` 是 V1.4.4 新增模块，可作为版本探针：
+
+```bash
+docker compose exec app python -c "import app.api.staging; print('V1.4.4 OK')"
+```
+
+打印 `V1.4.4 OK` 即为新代码。若报 `ModuleNotFoundError`，说明容器仍在跑旧镜像——执行 `docker compose up -d --build` 重新构建（**仅 `restart` 不会重建镜像**）。
+
+**② 确认 `./data:/app/data` 已挂载**
+
+```bash
+docker inspect $(docker compose ps -q app) --format '{{json .Mounts}}' | python -m json.tool
+```
+
+输出中必须存在 `Destination` 为 `/app/data`、`RW` 为 `true` 的条目：
+
+```json
+{
+    "Type": "bind",
+    "Source": "/opt/DriveIntent/data",
+    "Destination": "/app/data",
+    "RW": true
+}
+```
+
+没有这条 = 挂载未生效，容器重启会丢失待处理作业的截图。（同时可看到 `Destination: /app/config` 的只读挂载，那是 V1.1 的车型配置。）
+
+**③ 确认暂存目录容器内可写**
+
+```bash
+docker compose exec app python -c "import os; d='data/staging'; os.makedirs(d, exist_ok=True); print('writable:', os.access(d, os.W_OK))"
+```
+
+预期 `writable: True`。此外服务启动时会主动检查该目录，不可写会**直接启动失败**，故 `docker compose logs app` 中出现「截图暂存目录不可写」即为此问题。
+
+**④ 端到端确认新作业不再写入 base64**
+
+提交一个带截图的作业后，查库确认单行体积为 KB 级而非 MB 级：
+
+```sql
+SELECT id, status,
+       ROUND(LENGTH(request_payload)/1024) AS payload_kb
+FROM api_job
+WHERE job_type = 'profile_analysis'
+ORDER BY created_at DESC LIMIT 5;
+```
+
+V1.4.4 生效后新建作业的 `payload_kb` 应为几十到几百 KB。**若仍出现上万 KB（十几 MB），说明 ① 未生效**，请回到第 ① 步。这是判断升级是否真正落地最可靠的一条。
+
+> **注意 `pending` 不会自行消失**：升级前积压的老作业其 payload 里仍内联着 base64，必须由 Worker 逐个消费完才会被剥离。若升级后观察到 `pending` 长期不下降，先确认 Worker 是否在运行（第 8 节「提交任务后一直 pending」），再看第 9.2 节的存量处置。
+
 ---
 
 ## 7. 生产加固建议
@@ -282,6 +339,14 @@ python scripts/api_smoke_test.py
 - **网络隔离**：MySQL 端口不对公网开放；Compose 部署下 MySQL 仅在内部网络，无需映射到宿主机。
 - **数据备份**：Compose 数据在 `mysql_data` 卷，定期 `docker exec` 执行 `mysqldump` 或对卷做快照。
 - **并发调优**：按 LLM 服务的吞吐与限流调整 `WORKER_CONCURRENCY`、`API_WORKER_CONCURRENCY` 与 `COMMENT_BATCH_SIZE`。
+- **MySQL `max_connections` 须与连接池匹配**：应用侧上限 = `DB_POOL_SIZE + DB_MAX_OVERFLOW`（默认 30），但多进程部署、运维脚本、其他接入方都会共用数据库连接。上线前对比这两个值确认有余量：
+
+  ```sql
+  SHOW VARIABLES LIKE 'max_connections';       -- 配置上限
+  SHOW STATUS LIKE 'Max_used_connections';     -- 历史峰值
+  ```
+
+  峰值贴近甚至等于上限，说明数据库侧已被打满，此时**调大 `DB_POOL_SIZE` 无效**——只是把排队从连接池挪到数据库。MySQL 默认 `max_connections=151` 对本服务偏小，生产建议 ≥500。
 - **日志**：应用日志输出到标准输出，Compose 下用 `docker compose logs`，systemd 下用 `journalctl -u driveintent`。
 
 ---
@@ -293,13 +358,15 @@ python scripts/api_smoke_test.py
 | app 容器一直不 healthy | 查看 `docker compose logs app`；多为 MySQL 未就绪或 `.env` 配置错误 |
 | 启动报数据库连接失败 | 核对 `DB_HOST/PORT/USER/PASSWORD/NAME`；裸机方式确认 MySQL 已启动且库已创建 |
 | API 返回 401 | 请求头 `Authorization: Bearer <key>` 的 key 不在 `API_KEYS` 列表中 |
-| 提交任务后一直 `pending` | 确认 `WORKER_ENABLED` / `API_WORKER_ENABLED` 为 `true`，查看日志是否有「Worker 已启动」 |
+| 提交任务后一直 `pending` | 确认 `WORKER_ENABLED` / `API_WORKER_ENABLED` 为 `true`，查看日志是否有「Worker 已启动」。**多机部署时确认跑 Worker 的是哪台**——库里堆积 `pending` 只说明没有 Worker 在消费，不一定是提交端的问题 |
+| 升级 V1.4.4 后 `pending` 长期不下降 | 这批多半是升级前提交的老作业（payload 内联 base64，单行十几 MB），必须由 Worker 逐个消费才会被剥离，V1.4.4 的新逻辑对存量不生效。按 6.1 节 ④ 确认新作业已是 KB 级；存量处置见 9.2 节 |
 | 真实模型调用失败/超时 | 检查 `LLM_BASE_URL` 是否含 `/v1`、`LLM_API_KEY` 是否有效、网络是否可达；必要时调大 `LLM_TIMEOUT_SECONDS` |
 | 主页截图识别不生效 | 确认多模态模型支持图像输入（`LLM_MULTIMODAL_MODEL`，留空则用 `LLM_MODEL`），且 `LLM_PROVIDER=openai_compat` |
 | 端点报错拒绝 `enable_thinking` 参数 | 该端点不支持深度思考扩展字段；设 `LLM_ENABLE_THINKING=false`（默认值）即注入 `false`，若仍被拒需确认端点是否完全不接受该参数 |
 | 意向降级不生效（从不输出 `filter_type="model_mismatch"`） | 确认 `config/our_models.json` 已生成且容器内可见（Compose 需 `./config` 挂载）、`INTENT_DOWNGRADE_ENABLED=true`；查启动日志是否有"车型配置不存在"警告 |
 | 日志出现 `QueuePool limit ... reached` | 先确认版本 ≥ **V1.4.4**（该版本修复了真因：同步 DB 调用在事件循环内执行，读一条 13MB payload 会冻结整个循环约 3.2s，期间所有协程与 HTTP 请求停摆；V1.4.3 只修了会话生命周期，不足以消除该现象）。仍出现时按此顺序排查：① 检查是否有新增的同步端点在长耗时操作期间持有 `get_db()` 会话，或 async 函数内遗留未经 `asyncio.to_thread` 的同步 DB 调用；② 适当调低 `WORKER_CONCURRENCY` / `API_WORKER_CONCURRENCY`；③ **调大 `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` 前必须先确认 MySQL `max_connections` 有余量**（`SHOW STATUS LIKE 'Max_used_connections'` 对比 `SHOW VARIABLES LIKE 'max_connections'`），否则只是把排队从连接池挪到数据库侧 |
-| 带截图的作业全部按"无截图"评级 | 检查截图暂存目录是否挂载且可写（compose 需 `./data:/app/data`）。启动日志会因目录不可写直接报错；若目录可写但作业仍降级，查日志中"截图暂存文件读取失败"或"主页截图识别失败"告警 |
+| 带截图的作业全部按"无截图"评级 | 检查截图暂存目录是否挂载且可写（compose 需 `./data:/app/data`，核对方法见 6.1 节 ②③）。启动日志会因目录不可写直接报错；若目录可写但作业仍降级，查日志中"截图暂存文件读取失败"或"主页截图识别失败"告警 |
+| 升级后新作业 payload 仍是 MB 级 | 容器还在跑旧镜像。`docker compose restart` 不会重建镜像，须 `docker compose up -d --build`；用 6.1 节 ① 的探针确认 |
 
 ---
 
@@ -307,16 +374,40 @@ python scripts/api_smoke_test.py
 
 V1.4.4 起 **base64 原始截图不再入库**：`POST /api/v1/profile-analysis` 仍照常接收 base64（**对外契约不变**），但服务端会把截图抽到落盘暂存区，库中只保留识图后的纯文本。这使 `api_job` 单行从 MB 级降回 KB 级——存量库中该表 6408MB 里有 9520MB 是 payload，而 result 仅 78MB。
 
-**部署要求**：compose 已挂载 `./data:/app/data`（可写）。**该挂载必须存在**，否则容器重启会丢失待处理作业的截图（丢失后作业降级为无截图继续，不会失败，但评级质量下降）。自建部署方式需保证 `SCREENSHOT_STAGING_DIR`（默认 `data/staging`）指向持久化目录。
+**部署要求**：compose 已挂载 `./data:/app/data`（可写）。**该挂载必须存在**，否则容器重启会丢失待处理作业的截图（丢失后作业降级为无截图继续，不会失败，但评级质量下降）。自建部署方式需保证 `SCREENSHOT_STAGING_DIR`（默认 `data/staging`）指向持久化目录。挂载与代码版本的核对方法见 6.1 节。
 
 暂存文件在作业进入终态时自动删除，失败重试期间保留；进程崩溃遗留的孤儿文件在下次启动时自动回收。
 
-### 存量数据清理
+### 9.1 容量与运维
 
-升级到 V1.4.4 后，历史 base64 仍留在库中，需手动清理。**须按顺序执行**：
+- 峰值占用约「待处理作业数 × 单作业截图体积」，实测单作业平均 13MB。
+- 该目录**不需要备份**：文件仅在作业待处理期间存在，终态即删；丢失只导致该作业降级为无截图。
+- 目录内是普通 JSON（`<job_id>.json`），可直接查看与人工清理。停机期间清空整个 `data/staging` 是安全操作——待处理作业会降级为无截图继续，不会失败。
 
-1. **先让待处理队列跑完**。`pending` 行是待处理业务数据（升级时实测 595 行 / 7984MB），清理脚本会主动跳过它们。
-2. 队列排空后清理历史终态行：
+### 9.2 存量数据清理
+
+升级到 V1.4.4 后，历史 base64 仍留在库中，需手动清理。**升级前提交的 `pending` 作业其 payload 里仍内联着 base64**，V1.4.4 的新逻辑对它们不生效——只有被 Worker 消费到终态，或被显式清空，这部分体积才会释放。
+
+先按业务需要选择存量 `pending` 的处置方式：
+
+**方式 A：让 Worker 跑完（保留业务数据）**
+
+确认 Worker 正常运行后等待队列自然排空。注意这批老作业每行 13MB 左右，消费速度受识图与 LLM 吞吐限制，耗时以小时计。
+
+**方式 B：直接清空待处理队列（放弃这批业务数据）**
+
+当积压已过时效、不再需要处理时使用。**该操作删除 `pending` 行，不可恢复**：
+
+```bash
+python scripts/clear_pending_queue.py          # 预演，不写入
+python scripts/clear_pending_queue.py --apply  # 确认后执行
+```
+
+脚本只删 `status='pending'` 的行，`running` 与各终态行一律不触碰（`running` 可能正被 Worker 处理，删除会导致 Worker 落状态时找不到行）。
+
+> 升级实测：该批 `pending` 共 1807 行，其中 `profile_analysis` 652 行占 8240MB。
+
+队列处置完成后，清理历史终态行：
 
 ```bash
 python scripts/cleanup_api_job_payload.py          # 预演，不写入
@@ -325,13 +416,15 @@ python scripts/cleanup_api_job_payload.py --apply  # 确认后执行
 
 脚本只清空 `profile_analysis` 终态行（success/partial/failed）payload 中的截图字段，**保留 `result`、`status`、时间戳、`progress_*`**（`/audit` 页面依赖这些列统计），`comment_screening` 的大 payload 是评论正文属业务数据不动。分批提交，默认 dry-run。
 
-3. 清理后物理空间需 `OPTIMIZE TABLE` 才回收（**会锁表，选业务低峰**）：
+最后回收物理空间——**删除与清空都不会自动缩小表文件**，必须执行（**会锁表，选业务低峰**）：
 
 ```sql
 OPTIMIZE TABLE api_job;
 ```
 
-与补索引脚本同理，Docker 部署时应在宿主机运行该脚本，不要用 `docker compose exec app`。
+与补索引脚本同理，Docker 部署时应在宿主机运行这两个脚本，不要用 `docker compose exec app`（`scripts/` 不在镜像内）。
+
+> **两个已知的库侧限制**（排查时会遇到）：`api_job` 单行可达 25MB，任何 `ORDER BY LENGTH(request_payload)` 都会触发 `(1038, Out of sort memory)`，故上述脚本均不排序；此外若数据库账号无 `PROCESS` 权限，`information_schema.innodb_trx` / `processlist` 不可见，属正常现象。
 
 ---
 
