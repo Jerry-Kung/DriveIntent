@@ -10,6 +10,7 @@ from app.api.worker import ApiJobWorker
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm.gateway import build_gateway
+from app.logging_filters import install_access_log_filter
 from app.skills.executor import SkillExecutor
 from app.web.audit import audit_router
 from app.web.routes import router
@@ -20,6 +21,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+# 轮询/健康检查的成功访问日志会刷屏，仅保留出错记录
+install_access_log_filter()
 
 
 @asynccontextmanager
