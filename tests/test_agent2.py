@@ -294,6 +294,25 @@ def test_v121_user_lead_result_rejects_invalid_match_level():
         UserLeadResult(lead_grade="B", model_match_level="not_a_level")
 
 
+def test_v151_user_lead_result_final_adjust_defaults():
+    """V1.5.1：终判调整审计字段缺省兼容（旧结果/不含新字段的 LLM 输出）。"""
+    from app.schemas.skills import UserLeadResult
+    r = UserLeadResult(lead_grade="B")
+    assert r.merge_boost == "none"
+    assert r.merge_boost_reason is None
+    assert r.purchase_downgrade == "none"
+    assert r.purchase_downgrade_reason is None
+    # 显式提供终判调整审计
+    r2 = UserLeadResult(
+        lead_grade="B", baseline_grade="A",
+        merge_boost="upgraded",
+        merge_boost_reason="多条询价评论对购车倾向有积极印证",
+        purchase_downgrade="capped",
+        purchase_downgrade_reason='评论"大定已下"为已完成购买动作信号')
+    assert r2.merge_boost == "upgraded"
+    assert r2.purchase_downgrade == "capped"
+
+
 def test_v121_user_analysis_prompt_has_match_rules():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")

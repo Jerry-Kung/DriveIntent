@@ -82,4 +82,12 @@ class UserLeadResult(BaseModel):
     # 无评论历史（has_value=false 空账号）时保持默认 false。
     is_car_owner: bool = False
     has_purchase_intent: bool = False
+    # V1.5.1：终判调整审计字段（内部用，不进对外 API 契约）。
+    # 审计链条：baseline_grade →(match_adjustment)→ 中间等级1
+    #          →(profile_adjustment)→ 中间等级2
+    #          →(merge_boost / purchase_downgrade)→ lead_grade
+    merge_boost: str = "none"  # none | upgraded
+    merge_boost_reason: str | None = None
+    purchase_downgrade: str = "none"  # none | capped
+    purchase_downgrade_reason: str | None = None
     confidence: float = 0.0
