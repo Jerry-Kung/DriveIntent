@@ -67,12 +67,42 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v13_user_analysis_config_uses_v5():
+def test_v151_user_analysis_config_uses_v151():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v5.txt"
-    assert config.prompt_version == "v5"
-    assert config.version == "1.3"
+    assert config.prompt_file == "user_lead_analysis_v1.5.1.txt"
+    assert config.prompt_version == "v1.5.1"
+    assert config.version == "1.5.1"
+
+
+def test_v151_user_analysis_prompt_has_final_adjust_rules():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    # 第四段：终判调整
+    assert "四段流水线" in text
+    assert "终判调整" in text
+    # 规则 1：合并增强
+    assert "merge_boost" in text
+    assert "merge_boost_reason" in text
+    assert "酌情将等级上调一级" in text
+    # 规则 2：已购封顶
+    assert "purchase_downgrade" in text
+    assert "purchase_downgrade_reason" in text
+    assert "已下单" in text and "已大定" in text and "已提车" in text
+    assert "不得高于 B 级" in text
+    assert "comment_time" in text          # 时效性引导
+    # analysis_text 分段升为六段
+    assert "六段" in text
+    # 前三段规则原样保留（v5 回归锚点）
+    assert "baseline_grade" in text
+    assert "model_match_level" in text
+    assert "只上调" in text
+    assert "homepage_profile" in text
+    assert "我朋友想买" in text
 
 
 def test_v12_user_analysis_prompt_has_profile_rules():
