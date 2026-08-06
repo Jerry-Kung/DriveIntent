@@ -1,14 +1,14 @@
 # V1 版本总览
 
-> 最后更新：2026-08-05（随 V1.4.5 发布）
+> 最后更新：2026-08-06（随 V1.5.1 发布）
 
 ## 能力快照
 
 - **定位**：可通过 docker compose 独立部署的后端微服务，对外提供两个异步 Agent API（评论价值初筛 / 账号画像精筛），同时保留 V0 的 8000 测试链路。
 - **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。
-- **核心能力现状（V1.3 后）**：
+- **核心能力现状（V1.5.1 后）**：
   - **Agent1（评论初筛）**：filter_type 分类（`genuine_user` / `bot_spam` / `marketing_account` / `noise` / `off_topic` / `no_purchase_intent`）；评论级 `is_car_owner` / `has_purchase_intent` 两独立标签；"有购车意向必过筛"等硬规则由代码层 `resolve_filter_type()` 确定性合成；非本人意向（替他人问询/怂恿/营销口吻）识别降档。
-  - **Agent2（账号精筛）**：账号级两标签 + H/A/B/C 定级三段流水线——评论基线 → 在售车型匹配度四档调整 → 主页截图结构化画像有限上调。
+  - **Agent2（账号精筛）**：账号级两标签 + H/A/B/C 定级四段流水线——评论基线 → 在售车型匹配度四档调整 → 主页截图结构化画像有限上调 → 终判调整（多条相近评论合并增强酌情上调 + "已购"信号封顶原则上不高于 B 级，V1.5.1）。
   - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）。
   - **后端审计（V1.4）**：内部页 `/audit` 按东八区自然天/小时展示 API 任务量（接收/成功/部分成功/失败）与 LLM 消耗（调用次数/失败/输入输出 tokens/平均耗时，按 skill × 模型细分）；纯只读模块，数据源为既有 `api_job` / `llm_call_log` 落库。
 - **架构要点**：API 路径（`api_job` 表 + ApiJobWorker，纯异步轮询，不写 lead 表）与 V0 流水线路径（lead 表 + Web 页面）并存，共享 LLM Gateway / Skill 执行器 / Prompt 模板层。
@@ -21,10 +21,10 @@
 |---|---|---|
 | comment_lead_screening | 1.3 | v3 |
 | video_context_analysis | 1.1 | v2 |
-| user_lead_analysis | 1.3 | v5 |
+| user_lead_analysis | 1.5.1 | v1.5.1 |
 | image_recognition | 1.4.1 | v2 |
 
-（旧口径版本号与项目版本的映射见 [VERSIONING.md](../VERSIONING.md) 第 4 节。）
+（旧口径版本号与项目版本的映射见 [VERSIONING.md](../VERSIONING.md) 第 4 节；`user_lead_analysis` 自 V1.5.1 起启用 VERSIONING.md 第 4 节新口径版本号。）
 
 ## 变更索引
 
@@ -42,6 +42,7 @@
 | V1.4.3 | 2026-08-05 | 补丁：连接池耗尽根因修复——API Worker 会话生命周期改造（LLM 期间零连接持有），契约不变 | [design](V1.4/v1.4.3-design.md) |
 | V1.4.4 | 2026-08-05 | 补丁：连接池耗尽真因修复——同步 DB IO 移出事件循环（to_thread）+ base64 截图不入库改存识图文本（落盘暂存区），契约不变 | [design](V1.4/v1.4.4-design.md) |
 | V1.4.5 | 2026-08-05 | 补丁：连接池耗尽放大器修复——LLM 调用日志落库（全系统最高频 DB 写入）移出事件循环，`_log` 拆同步体 + async to_thread，契约不变 | [design](V1.4/v1.4.5-design.md) |
+| V1.5.1 | 2026-08-06 | 定级终判调整：多条相近评论合并增强 + "已购"信号封顶（原则上不高于 B），仅 Prompt + 审计字段，契约不变 | [design](V1.5/v1.5.1-design.md) / [plan](V1.5/v1.5.1-plan.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次
