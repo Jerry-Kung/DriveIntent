@@ -66,9 +66,10 @@ async def test_screen_comment_batch_releases_connection_during_llm(session):
 
 
 async def test_run_user_analysis_releases_connection_during_llm(session):
+    from tests.test_user_filter import NOT_FILTERED_JSON
     _, u1, _, c1, _ = _agg_setup(session)
-    spy = _spy(session, LEAD_JSON.replace("__CID__", str(c1.id)))
+    spy = _spy(session, NOT_FILTERED_JSON, LEAD_JSON.replace("__CID__", str(c1.id)))
 
     await run_user_analysis(session, spy, u1.id)
 
-    assert spy.in_txn_at_call == [False]
+    assert spy.in_txn_at_call == [False, False]  # 过滤与定级两跳均不持有事务

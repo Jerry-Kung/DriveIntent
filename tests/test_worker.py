@@ -10,6 +10,7 @@ from app.workflow.pipeline import (SKILL_VERSIONS, VIDEO_CONTEXT_SKILL,
 from app.workflow.worker import Worker
 from tests.test_comment_screening import _item
 from tests.test_user_analysis import LEAD_JSON
+from tests.test_user_filter import NOT_FILTERED_JSON
 from app.models import Comment, PlatformUser, Video
 import app.workflow.worker as worker_module
 
@@ -29,6 +30,7 @@ async def test_worker_full_pipeline(session):
     provider.queue(
         CONTEXT_JSON,
         json.dumps({"items": [_item(c.id)]}, ensure_ascii=False),
+        NOT_FILTERED_JSON,
         LEAD_JSON.replace("__CID__", str(c.id)))
     worker = Worker(lambda: session,
                     SkillExecutor(LLMGateway(provider)))

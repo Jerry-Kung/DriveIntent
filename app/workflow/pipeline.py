@@ -10,6 +10,7 @@ from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
 from app.services.results import get_current_result, save_result
 from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
+from app.skills.user_filter import build_filtered_lead_result, run_user_filter
 from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
@@ -137,8 +138,14 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     }
     # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个 LLM 调用
     session.commit()
-    out: UserLeadResult = await executor.run(
-        USER_ANALYSIS_SKILL, context, UserLeadResult)
+    # V1.6：定级前先过无效用户过滤（fail-open）。命中合成 C 级结果照常
+    # 落 AnalysisResult（含审计字段）；is_valid_lead=False 自然跳过 upsert_lead。
+    filt = await run_user_filter(executor, evidence)
+    if filt.filtered:
+        out: UserLeadResult = build_filtered_lead_result(filt)
+    else:
+        out = await executor.run(
+            USER_ANALYSIS_SKILL, context, UserLeadResult)
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,
