@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-11（随 V1.6 发布）
+> 最后更新：2026-08-11（随 V1.6.1 发布）
 
 ## 能力快照
 
@@ -21,8 +21,8 @@
 |---|---|---|
 | comment_lead_screening | 1.3 | v3 |
 | video_context_analysis | 1.1 | v2 |
-| user_lead_analysis | 1.6 | v1.6 |
-| user_lead_filter | 1.6 | v1.6 |
+| user_lead_analysis | 1.6.1 | v1.6.1 |
+| user_lead_filter | 1.6.1 | v1.6.1 |
 | image_recognition | 1.4.1 | v2 |
 
 （旧口径版本号与项目版本的映射见 [VERSIONING.md](../VERSIONING.md) 第 4 节；`user_lead_analysis` 自 V1.5.1 起启用 VERSIONING.md 第 4 节新口径版本号。）
@@ -45,6 +45,7 @@
 | V1.4.5 | 2026-08-05 | 补丁：连接池耗尽放大器修复——LLM 调用日志落库（全系统最高频 DB 写入）移出事件循环，`_log` 拆同步体 + async to_thread，契约不变 | [design](V1.4/v1.4.5-design.md) |
 | V1.5.1 | 2026-08-06 | 定级终判调整：多条相近评论合并增强 + "已购"信号封顶（原则上不高于 B），仅 Prompt + 审计字段，契约不变 | [design](V1.5/v1.5.1-design.md) / [plan](V1.5/v1.5.1-plan.md) |
 | V1.6 | 2026-08-11 | 无效用户过滤节点：定级前独立 LLM 过滤（六类命中直接 C），已购封顶/怂恿/营销规则迁出定级 Prompt，两路径接入，契约不变 | [design](V1.6/design.md) / [plan](V1.6/plan.md) |
+| V1.6.1 | 2026-08-11 | analysis 可读性修复：定级/过滤 Prompt 对外文本禁用内部审计字段名与枚举值，analysis 六段业务化，契约不变 | [design](V1.6/v1.6.1-design.md) / [plan](V1.6/v1.6.1-plan.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次
