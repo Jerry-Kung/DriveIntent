@@ -3,7 +3,7 @@
 > 版本：V1.6 | 日期：2026-08-11
 > 设计文档：[design.md](design.md)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 在 Agent2 定级流水线之前新增独立 LLM 过滤节点，提前过滤"实际无购车意向但易被误判为高价值"的用户（直接定 C），并把分散在定级 Prompt 中的用户级过滤规则统一迁移收口。
 
@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: `app.schemas.skills.UserFilterResult`（字段见下）；`UserLeadResult.filter_category: str | None`、`UserLeadResult.filter_reason: str | None`（默认均 None）
 
-- [ ] **Step 1: 写失败测试**（新建 `tests/test_user_filter.py`）
+- [x] **Step 1: 写失败测试**（新建 `tests/test_user_filter.py`）
 
 ```python
 import json
@@ -78,12 +78,12 @@ def test_v16_user_lead_result_has_filter_audit_fields():
     assert r2.filter_category == "already_purchased"
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_user_filter.py -q`
 Expected: FAIL（`ImportError: cannot import name 'UserFilterResult'`）
 
-- [ ] **Step 3: 实现 Schema**（`app/schemas/skills.py`）
+- [x] **Step 3: 实现 Schema**（`app/schemas/skills.py`）
 
 `UserLeadResult` 的 `purchase_downgrade_reason` 字段之后、`confidence` 之前插入：
 
@@ -118,12 +118,12 @@ class UserFilterResult(BaseModel):
     confidence: float = 0.0
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_user_filter.py -q`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add app/schemas/skills.py tests/test_user_filter.py
@@ -144,7 +144,7 @@ git commit -m "feat(v1.6): UserFilterResult 输出 Schema 与 UserLeadResult 过
 - Consumes: Task 1 的 `UserFilterResult`；`app.skills.executor.SkillExecutionError`；executor 鸭子类型接口 `await executor.run(skill_id: str, context: dict, output_model) -> BaseModel`
 - Produces: `app.skills.user_filter.USER_FILTER_SKILL = "user_lead_filter"`；`async run_user_filter(executor, evidence: dict) -> UserFilterResult`（fail-open）；`build_filtered_lead_result(f: UserFilterResult) -> UserLeadResult`
 
-- [ ] **Step 1: 写失败测试**（追加到 `tests/test_user_filter.py`）
+- [x] **Step 1: 写失败测试**（追加到 `tests/test_user_filter.py`）
 
 ```python
 # —— 供本文件与其他测试文件复用的 Mock 响应 ——
@@ -254,12 +254,12 @@ def test_v16_filter_prompt_renders_with_categories():
     assert "comment_time" in text        # 时效性引导
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_user_filter.py -q`
 Expected: 新增用例 FAIL（`ModuleNotFoundError: app.skills.user_filter` / 配置文件不存在）
 
-- [ ] **Step 3: 写过滤 Prompt**（新建 `app/skills/prompts/user_lead_filter_v1.6.txt`，完整内容如下）
+- [x] **Step 3: 写过滤 Prompt**（新建 `app/skills/prompts/user_lead_filter_v1.6.txt`，完整内容如下）
 
 ```text
 你是汽车销售线索质检专家。以下是一位抖音用户的全部有效评论及其上下文，
@@ -319,7 +319,7 @@ filter_category 取对应值：
 2. 没有证据的字段输出 null 或空数组，严禁编造。
 ```
 
-- [ ] **Step 4: 写 Skill 配置**（新建 `app/skills/configs/user_lead_filter.yaml`）
+- [x] **Step 4: 写 Skill 配置**（新建 `app/skills/configs/user_lead_filter.yaml`）
 
 ```yaml
 skill_id: user_lead_filter
@@ -336,7 +336,7 @@ prompt_file: user_lead_filter_v1.6.txt
 prompt_version: "v1.6"
 ```
 
-- [ ] **Step 5: 写共享模块**（新建 `app/skills/user_filter.py`，完整内容如下）
+- [x] **Step 5: 写共享模块**（新建 `app/skills/user_filter.py`，完整内容如下）
 
 ```python
 import json
@@ -383,12 +383,12 @@ def build_filtered_lead_result(f: UserFilterResult) -> UserLeadResult:
         confidence=f.confidence)
 ```
 
-- [ ] **Step 6: 运行确认通过**
+- [x] **Step 6: 运行确认通过**
 
 Run: `python -m pytest tests/test_user_filter.py -q`
 Expected: PASS（全部用例）
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add app/skills/prompts/user_lead_filter_v1.6.txt app/skills/configs/user_lead_filter.yaml app/skills/user_filter.py tests/test_user_filter.py
@@ -407,7 +407,7 @@ git commit -m "feat(v1.6): 无效用户过滤 Skill——Prompt/配置/共享模
 - Consumes: Task 2 的 `run_user_filter` / `build_filtered_lead_result`；`tests.test_user_filter.NOT_FILTERED_JSON` / `FILTERED_JSON`
 - Produces: 行为变更——每个有评论账号在定级前先过一次过滤 LLM 调用；命中者不再发起定级调用
 
-- [ ] **Step 1: 写失败测试**（追加到 `tests/test_agent2.py`）
+- [x] **Step 1: 写失败测试**（追加到 `tests/test_agent2.py`）
 
 ```python
 @pytest.mark.asyncio
@@ -463,12 +463,12 @@ async def test_v16_unfiltered_account_proceeds_to_grading():
     assert r["intent_level_code"] == "high"
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_agent2.py -q -k v16`
 Expected: FAIL（当前流程无过滤调用：第一个用例 `len(sent)` 为 1 但结果按定级解析报错，或断言失败）
 
-- [ ] **Step 3: 实现接入**（`app/api/agent2.py`）
+- [x] **Step 3: 实现接入**（`app/api/agent2.py`）
 
 顶部 import 追加：
 
@@ -496,7 +496,7 @@ from app.skills.user_filter import build_filtered_lead_result, run_user_filter
                         executor, account, vision_text, our_models_summary)
 ```
 
-- [ ] **Step 4: 更新既有用例的 Mock 队列**（`tests/test_agent2.py`）
+- [x] **Step 4: 更新既有用例的 Mock 队列**（`tests/test_agent2.py`）
 
 文件顶部追加 `from tests.test_user_filter import NOT_FILTERED_JSON`，下列用例在定级响应**之前**插入一条 `NOT_FILTERED_JSON`：
 
@@ -510,12 +510,12 @@ from app.skills.user_filter import build_filtered_lead_result, run_user_filter
 
 不改：`test_profile_empty_history_no_value`（零 LLM）、`test_v11_analyze_account_passes_summary`（直调 `analyze_account`，不含过滤）、`test_v13_profile_error_item_labels_null`（空队列→过滤 fail-open 放行→定级失败→error item，行为不变）。
 
-- [ ] **Step 5: 运行确认通过**
+- [x] **Step 5: 运行确认通过**
 
 Run: `python -m pytest tests/test_agent2.py tests/test_user_filter.py -q`
 Expected: PASS（全部）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add app/api/agent2.py tests/test_agent2.py
@@ -534,7 +534,7 @@ git commit -m "feat(v1.6): API 路径接入无效用户过滤——命中直接 
 - Consumes: Task 2 的 `run_user_filter` / `build_filtered_lead_result`；`tests.test_user_filter.NOT_FILTERED_JSON` / `FILTERED_JSON`
 - Produces: V0 路径行为与 API 路径一致——过滤命中落 C 级 `AnalysisResult`（含审计字段），`is_valid_lead=False` 自然跳过 `upsert_lead`
 
-- [ ] **Step 1: 写失败测试**（追加到 `tests/test_user_analysis.py`）
+- [x] **Step 1: 写失败测试**（追加到 `tests/test_user_analysis.py`）
 
 ```python
 async def test_v16_run_user_analysis_filtered_no_lead(session):
@@ -555,12 +555,12 @@ async def test_v16_run_user_analysis_filtered_no_lead(session):
     assert res.result["filter_reason"]
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_user_analysis.py -q -k v16`
 Expected: FAIL（当前流程把 FILTERED_JSON 当定级输出解析，`lead_grade` 缺失 → SkillExecutionError）
 
-- [ ] **Step 3: 实现接入**（`app/workflow/pipeline.py`）
+- [x] **Step 3: 实现接入**（`app/workflow/pipeline.py`）
 
 顶部 import 追加：
 
@@ -588,7 +588,7 @@ from app.skills.user_filter import build_filtered_lead_result, run_user_filter
             USER_ANALYSIS_SKILL, context, UserLeadResult)
 ```
 
-- [ ] **Step 4: 更新既有用例队列**
+- [x] **Step 4: 更新既有用例队列**
 
 `tests/test_user_analysis.py`：顶部追加 `from tests.test_user_filter import NOT_FILTERED_JSON`；下列用例在每次定级响应前插入 `NOT_FILTERED_JSON`：
 
@@ -607,12 +607,12 @@ from app.skills.user_filter import build_filtered_lead_result, run_user_filter
     assert spy.in_txn_at_call == [False, False]  # 过滤与定级两跳均不持有事务
 ```
 
-- [ ] **Step 5: 运行确认通过**
+- [x] **Step 5: 运行确认通过**
 
 Run: `python -m pytest tests/test_user_analysis.py tests/test_pipeline_connection_release.py -q`
 Expected: PASS（全部）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add app/workflow/pipeline.py tests/test_user_analysis.py tests/test_pipeline_connection_release.py
@@ -633,7 +633,7 @@ git commit -m "feat(v1.6): V0 流水线路径接入无效用户过滤——与 A
 - Consumes: 无（纯资产变更）
 - Produces: `load_skill_config("user_lead_analysis")` → `version "1.6"` / `prompt_file "user_lead_analysis_v1.6.txt"` / `prompt_version "v1.6"`
 
-- [ ] **Step 1: 更新版本锚点测试为失败态**（`tests/test_agent2.py`）
+- [x] **Step 1: 更新版本锚点测试为失败态**（`tests/test_agent2.py`）
 
 `test_v151_user_analysis_config_uses_v151` 整体替换为：
 
@@ -678,12 +678,12 @@ def test_v16_user_analysis_prompt_final_adjust_merge_only():
 
 `test_v121_pipeline_skill_version_bumped` 中 `assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.5.1"` 改为 `== "1.6"`。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_agent2.py -q -k "v16_user_analysis or v121_pipeline"`
 Expected: FAIL（配置仍指 v1.5.1）
 
-- [ ] **Step 3: 生成 v1.6 Prompt**
+- [x] **Step 3: 生成 v1.6 Prompt**
 
 复制 `app/skills/prompts/user_lead_analysis_v1.5.1.txt` 为 `user_lead_analysis_v1.6.txt`，做以下修改（其余内容一字不动）：
 
@@ -727,7 +727,7 @@ has_purchase_intent=false，相关评论不得作为评级的意向证据。
 
 (f) 开头第一段之后（"用户证据包"之前）不新增内容；`is_car_owner`/`has_purchase_intent` 独立标签段保持原样（定级输出仍为放行用户的标签权威来源）。
 
-- [ ] **Step 4: 升级配置**（`app/skills/configs/user_lead_analysis.yaml` 整文件替换为）
+- [x] **Step 4: 升级配置**（`app/skills/configs/user_lead_analysis.yaml` 整文件替换为）
 
 ```yaml
 skill_id: user_lead_analysis
@@ -748,12 +748,12 @@ prompt_version: "v1.6"
 
 同时把 `app/workflow/pipeline.py` 的 `SKILL_VERSIONS` 中 `"user_lead_analysis": "1.5.1"` 改为 `"user_lead_analysis": "1.6"`。
 
-- [ ] **Step 5: 运行确认通过（全量回归）**
+- [x] **Step 5: 运行确认通过（全量回归）**
 
 Run: `python -m pytest tests/ -q`
 Expected: 全部 PASS（既有 v11/v12/v121/v13 锚点测试断言的字符串在 v1.6 中均保留：`方舟X7`、`baseline_grade`、`model_match_level`、`降两级`、`匹配度`、`只上调`、`homepage_profile`、`我朋友想买`、`置换`、`unknown`、`未配置`）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add app/skills/prompts/user_lead_analysis_v1.6.txt app/skills/configs/user_lead_analysis.yaml app/workflow/pipeline.py tests/test_agent2.py
@@ -770,7 +770,7 @@ git commit -m "feat(v1.6): 定级 Prompt 升 v1.6——已迁出规则删除，�
 
 **Interfaces:** 无（纯文档）
 
-- [ ] **Step 1: 更新 OVERVIEW.md**
+- [x] **Step 1: 更新 OVERVIEW.md**
 
 (a) 能力快照中 Agent2 一条替换为：
 
@@ -788,12 +788,12 @@ git commit -m "feat(v1.6): 定级 Prompt 升 v1.6——已迁出规则删除，�
 
 (d) 顶部"最后更新"日期改为 `2026-08-11（随 V1.6 发布）`。
 
-- [ ] **Step 2: 全量回归**
+- [x] **Step 2: 全量回归**
 
 Run: `python -m pytest tests/ -q`
 Expected: 全部 PASS
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add claude_docs/versions/V1/OVERVIEW.md claude_docs/versions/V1/V1.6/plan.md
