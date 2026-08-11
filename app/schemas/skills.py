@@ -90,4 +90,29 @@ class UserLeadResult(BaseModel):
     merge_boost_reason: str | None = None
     purchase_downgrade: str = "none"  # none | capped
     purchase_downgrade_reason: str | None = None
+    # V1.6：无效用户过滤审计字段（内部用，不进对外 API 契约）。
+    # 被前置过滤节点命中时写入；未过滤（走完整定级流水线）为 None。
+    filter_category: str | None = None
+    filter_reason: str | None = None
+    confidence: float = 0.0
+
+
+class UserFilterResult(BaseModel):
+    """V1.6 无效用户前置过滤输出。
+
+    识别"实际无购车意向但易被误判为高价值"的用户，命中者不进定级流水线。
+    两个独立标签由本节点一并判定：被过滤用户不进定级，对外契约的
+    is_car_owner / has_purchase_intent 由此供给；未过滤时以定级输出为准。
+    """
+    filtered: bool = False
+    filter_category: Literal["already_purchased", "promoting_others",
+                             "proxy_inquiry", "marketing_suspect",
+                             "industry_professional", "other"] | None = None
+    filter_reason: str | None = None
+    is_car_owner: bool = False
+    has_purchase_intent: bool = False
+    evidence_comment_ids: list[str] = []
+    profile_tags: list[str] = []
+    profile_summary: str = ""
+    analysis_text: str = ""
     confidence: float = 0.0
