@@ -71,9 +71,9 @@ async def test_profile_no_screenshot_lowers_score():
 def test_v16_user_analysis_config_uses_v16():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.6.txt"
-    assert config.prompt_version == "v1.6"
-    assert config.version == "1.6"
+    assert config.prompt_file == "user_lead_analysis_v1.6.1.txt"
+    assert config.prompt_version == "v1.6.1"
+    assert config.version == "1.6.1"
 
 
 def test_v16_user_analysis_prompt_final_adjust_merge_only():
@@ -102,6 +102,25 @@ def test_v16_user_analysis_prompt_final_adjust_merge_only():
     assert "我朋友想买" in text          # 替他人问询证据剔除规则保留
     assert "完全无购车相关信号" in text  # 窄化保留的 is_valid_lead=false 规则
     assert "六段" in text
+
+
+def test_v161_analysis_prompt_readability_ban():
+    """v1.6.1：面向人的文本字段禁用英文字段名/枚举值，analysis 六段业务化。"""
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    # 全局可读性禁令与正反示例
+    assert "不得出现任何英文字段名" in text
+    assert "is_car_owner判定为true" in text      # 反例（真实泄漏文本）
+    assert "判定该用户为车主且有购车意向" in text  # 正例
+    # analysis_text 六段业务化段名
+    assert "评级调整说明" in text
+    assert "综合评价" in text
+    # 旧诱导措辞已删除
+    assert "匹配档位与各段调整" not in text
 
 
 def test_v12_user_analysis_prompt_has_profile_rules():
@@ -363,7 +382,7 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6.1"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
