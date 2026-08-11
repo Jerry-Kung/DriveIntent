@@ -112,5 +112,6 @@ has_purchase_intent=false，相关评论不得作为评级的意向证据。
 要求：
 1. 所有结论必须有评论证据支撑，evidence_comment_ids 不得为空；
 2. 没有证据的字段输出 null 或空数组，严禁编造；
-3. 我方车型信息为"未配置"时，model_match_level=unknown、match_adjustment=0，
+3. 完全无购车相关信号的用户：is_valid_lead=false；
+4. 我方车型信息为"未配置"时，model_match_level=unknown、match_adjustment=0，
    跳过第二段调整。

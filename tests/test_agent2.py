@@ -100,6 +100,7 @@ def test_v16_user_analysis_prompt_final_adjust_merge_only():
     assert "只上调" in text
     assert "homepage_profile" in text
     assert "我朋友想买" in text          # 替他人问询证据剔除规则保留
+    assert "完全无购车相关信号" in text  # 窄化保留的 is_valid_lead=false 规则
     assert "六段" in text
 
 

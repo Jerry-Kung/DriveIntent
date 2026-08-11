@@ -95,7 +95,7 @@ UserLeadResult(lead_grade="C", is_valid_lead=False,
 |---|---|
 | 第四段规则 2「已购信号封顶 B」（含豁免） | **迁出**：过滤节点 already_purchased，命中直接 C（比封顶 B 更严，已确认接受）；豁免条件（明确新增购车意向、已购信号年代久远）转为**不过滤**条件，放行进定级且不再封顶 |
 | 意向主体判断中「怂恿/营销口吻 → 降档/is_valid_lead=false」 | **迁出**：过滤节点 promoting_others / marketing_suspect |
-| 要求 3「疑似营销、水军 → is_valid_lead=false」 | **迁出**：过滤节点 marketing_suspect |
+| 要求 3「疑似营销、水军 → is_valid_lead=false」 | **部分迁出**：营销/水军迁至过滤节点 marketing_suspect；「完全无购车相关信号 → is_valid_lead=false」窄化保留在定级 Prompt（终审裁决，保持 V0 未分类页行为不变） |
 | 意向主体判断中「替他人问询不作为本人意向证据」 | **保留**：混合型用户（部分评论替他人问、部分本人意向）会通过过滤，定级时仍需剔除代问评论作为证据；仅当**全部**意向均为替他人时才被过滤（proxy_inquiry） |
 | 第四段规则 1「多条相近评论合并增强」 | **保留**：第四段只剩此一条 |
 
@@ -124,7 +124,7 @@ Prompt 升 v1.6 后若 V0 路径不接过滤节点，已购/营销用户将失�
   `app/skills/configs/user_lead_filter.yaml`（version "1.6"、prompt_version "v1.6"）
 - `user_lead_analysis` 升 `user_lead_analysis_v1.6.txt`、config version "1.6"、
   prompt_version "v1.6"
-- `SKILL_VERSIONS` 注册新 Skill
+- `SKILL_VERSIONS` 不注册新 Skill（终审裁决：该字典仅驱动 V0 调度与 AnalysisResult 版本标记，过滤 Skill 均不使用；/audit 的 tokens 归因由 skill config 自动携带）
 - `claude_docs/versions/V1/OVERVIEW.md` 能力快照 + 变更索引更新
 - API 对接文档不动（契约无变化）
 
