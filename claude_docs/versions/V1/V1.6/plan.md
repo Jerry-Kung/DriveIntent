@@ -3,7 +3,7 @@
 > 版本：V1.6 | 日期：2026-08-11
 > 设计文档：[design.md](design.md)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 Agent2 定级流水线之前新增独立 LLM 过滤节点，提前过滤"实际无购车意向但易被误判为高价值"的用户（直接定 C），并把分散在定级 Prompt 中的用户级过滤规则统一迁移收口。
 
