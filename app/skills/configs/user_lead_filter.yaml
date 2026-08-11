@@ -1,0 +1,12 @@
+skill_id: user_lead_filter
+version: "1.6"
+description: >
+  无效用户前置过滤：基于用户全量证据包（全部评论+主页画像）识别实际无
+  购车意向但易被误判为高价值客户的用户（已购无新购计划/怂恿他人/仅替
+  他人问询/疑似营销水军/汽车从业者/其他），命中者直接定 C 级，不进入
+  后续定级流水线；宁放过勿误杀，证据不足一律放行。
+model:
+  name: ""
+  temperature: 0.1
+prompt_file: user_lead_filter_v1.6.txt
+prompt_version: "v1.6"
