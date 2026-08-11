@@ -18,6 +18,7 @@ from app.api.worker import ApiJobWorker
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.skills.executor import SkillExecutor
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 LEAD_JSON = ('{"lead_grade": "H", "is_valid_lead": true,'
              ' "lead_summary": "s", "evidence_comment_ids": ["u1:0"],'
@@ -114,7 +115,8 @@ async def test_worker_reads_staged_screenshot_and_stores_text(session):
     job = create_job(session, "profile_analysis", payload, total=1)
     staging.save(job.id, {"0": BASE64})
 
-    assert await _worker(session, VISION_JSON, LEAD_JSON).run_once() is True
+    assert await _worker(
+        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
 
     session.expire_all()
     saved = get_job(session, job.id)
@@ -131,7 +133,8 @@ async def test_legacy_inline_screenshot_still_works(session):
     payload = {"accounts": [dict(ACCOUNT)]}          # 截图仍内联
     job = create_job(session, "profile_analysis", payload, total=1)
 
-    assert await _worker(session, VISION_JSON, LEAD_JSON).run_once() is True
+    assert await _worker(
+        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
 
     session.expire_all()
     acc = get_job(session, job.id).request_payload["accounts"][0]
@@ -146,7 +149,8 @@ async def test_missing_staging_degrades_to_no_screenshot(session):
     job = create_job(session, "profile_analysis", payload, total=1)
     # 不写暂存文件，模拟人工清理/磁盘故障
 
-    assert await _worker(session, LEAD_JSON).run_once() is True
+    assert await _worker(
+        session, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
 
     session.expire_all()
     saved = get_job(session, job.id)

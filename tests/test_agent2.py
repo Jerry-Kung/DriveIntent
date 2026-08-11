@@ -6,6 +6,7 @@ from app.api.schemas import ProfileAnalysisRequest
 from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 
 def _executor_and_gateway(*responses):
@@ -22,7 +23,7 @@ async def test_profile_with_screenshot():
         "evidence_comment_ids": ["x"], "confidence": 0.9,
         "profile_tags": ["已购车主"], "profile_summary": "画像",
         "analysis_text": "分析"})
-    executor, gateway = _executor_and_gateway("这是科技博主主页", lead)
+    executor, gateway = _executor_and_gateway("这是科技博主主页", NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u1", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -54,7 +55,7 @@ async def test_profile_no_screenshot_lowers_score():
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["x"], "confidence": 0.8,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(lead)  # 无截图→只有一次分析调用
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)  # 无截图→过滤+分析两次调用
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u3", "account_name": "用户",
         "account_homepage_screenshot": "",
@@ -265,7 +266,7 @@ async def test_v12_profile_upgrade_maps_final_grade():
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "自驾意向",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.85,
         "profile_tags": ["自驾爱好者"], "profile_summary": "画像", "analysis_text": "分析"})
-    executor, gateway = _executor_and_gateway(profile, lead)
+    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u1", "account_name": "应许",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -290,7 +291,7 @@ async def test_v12_profile_baseline_c_not_upgraded():
         "adjustment_reason": None, "lead_grade": "C", "is_valid_lead": False,
         "evidence_comment_ids": ["u4:0"], "confidence": 0.6,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(profile, lead)
+    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u4", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -403,7 +404,7 @@ async def test_v121_unrelated_model_downgrade_maps_final_grade():
         "evidence_comment_ids": ["u5:0"], "confidence": 0.85,
         "profile_tags": [], "profile_summary": "p",
         "analysis_text": "含匹配度段的五段分析"})
-    executor, gateway = _executor_and_gateway(profile, lead)
+    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u5", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -435,7 +436,7 @@ async def test_v121_our_model_upgrade_maps_final_grade():
         "evidence_comment_ids": ["u6:0"], "confidence": 0.9,
         "profile_tags": [], "profile_summary": "p",
         "analysis_text": "五段分析"})
-    executor, gateway = _executor_and_gateway(profile, lead)
+    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u6", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -471,7 +472,7 @@ async def test_v13_profile_result_carries_labels():
         "evidence_comment_ids": ["x"], "confidence": 0.8,
         "is_car_owner": True, "has_purchase_intent": True,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(lead)
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u9", "account_name": "用户",
         "account_homepage_screenshot": "",
@@ -499,3 +500,56 @@ async def test_v13_profile_error_item_labels_null():
     assert r["error"]
     assert r["is_car_owner"] is None
     assert r["has_purchase_intent"] is None
+
+
+@pytest.mark.asyncio
+async def test_v16_filtered_account_returns_c_without_grading():
+    """过滤命中：直接 C（has_value=false），不发起定级调用，标签来自过滤节点。"""
+    from tests.test_user_filter import FILTERED_JSON
+    provider = MockProvider()
+    provider.queue(FILTERED_JSON)  # 无截图→仅一次过滤调用，无定级响应
+    gateway = LLMGateway(provider)
+    executor = SkillExecutor(gateway)
+    sent = []
+    orig = provider.chat
+
+    async def spy(messages, **kw):
+        sent.append(messages)
+        return await orig(messages, **kw)
+    provider.chat = spy
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u1", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "提车三个月",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert len(sent) == 1                    # 仅过滤一跳，定级未被调用
+    assert r["has_value"] is False
+    assert r["is_car_owner"] is True         # 标签由过滤节点供给
+    assert r["has_purchase_intent"] is False
+    assert r["analysis"]                     # 携带过滤判定说明
+    assert "filter_category" not in r        # 审计字段不进对外契约
+    assert "filter_reason" not in r
+
+
+@pytest.mark.asyncio
+async def test_v16_unfiltered_account_proceeds_to_grading():
+    """过滤放行：正常走定级，结果与过滤节点无关。"""
+    from tests.test_user_filter import NOT_FILTERED_JSON
+    lead = json.dumps({
+        "lead_grade": "H", "is_valid_lead": True, "lead_summary": "s",
+        "evidence_comment_ids": ["u2:0"], "confidence": 0.9,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u2", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "落地多少钱",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is True
+    assert r["intent_level_code"] == "high"

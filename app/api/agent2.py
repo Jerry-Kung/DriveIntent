@@ -8,6 +8,7 @@ from app.llm.gateway import LLMGateway
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.schemas.skills import UserLeadResult
 from app.skills.executor import extract_json, load_skill_config, render_prompt
+from app.skills.user_filter import build_filtered_lead_result, run_user_filter
 from app.skills.vision import build_image_message
 from app.workflow.pipeline import GRADING_STANDARD, USER_ANALYSIS_SKILL
 
@@ -98,8 +99,14 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 shot_available = bool(vision_text)
                 if vision_sink is not None and vision_text:
                     vision_sink[str(idx)] = vision_text
-                out = await analyze_account(
-                    executor, account, vision_text, our_models_summary)
+                # V1.6：定级前先过无效用户过滤（fail-open），命中直接定 C
+                filt = await run_user_filter(
+                    executor, _build_evidence(account, vision_text))
+                if filt.filtered:
+                    out = build_filtered_lead_result(filt)
+                else:
+                    out = await analyze_account(
+                        executor, account, vision_text, our_models_summary)
             mapped = map_profile_result(
                 out, screenshot_available=shot_available,
                 has_comments=has_comments, processed_at=ts)

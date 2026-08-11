@@ -6,6 +6,7 @@ from app.api.worker import ApiJobWorker
 from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 
 class _Factory:
@@ -45,7 +46,7 @@ async def test_worker_comment_job_fails_when_llm_keeps_failing(session):
 async def test_worker_profile_analysis_job_partial_when_one_account_fails(session):
     # 只 queue 第一个账号的合法分析响应，第二个账号 LLM 持续失败
     provider = MockProvider()
-    provider.queue(json.dumps({
+    provider.queue(NOT_FILTERED_JSON, json.dumps({
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.8,
         "profile_tags": ["对比阶段"], "profile_summary": "画像",

@@ -12,6 +12,7 @@ from app.api.worker import ApiJobWorker
 from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 
 @pytest.fixture()
@@ -76,7 +77,7 @@ async def test_profile_analysis_end_to_end_no_screenshot(env):
     job_id = r.json()["job_id"]
 
     provider = MockProvider()
-    provider.queue(json.dumps({
+    provider.queue(NOT_FILTERED_JSON, json.dumps({
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.8,
         "profile_tags": ["对比阶段"], "profile_summary": "画像",

@@ -15,6 +15,7 @@ from app.api.worker import ApiJobWorker
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.skills.executor import SkillExecutor
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 
 class _Factory:
@@ -132,7 +133,7 @@ async def test_profile_job_releases_connection_during_vision(session):
 async def test_worker_still_strips_screenshot_on_success(session):
     """终态剥离截图（V1.4 行为）经由 finish_job_by_id 仍须生效。"""
     provider = MockProvider()
-    provider.queue('{"content_theme": "汽车"}', LEAD_JSON)
+    provider.queue('{"content_theme": "汽车"}', NOT_FILTERED_JSON, LEAD_JSON)
     gateway = LLMGateway(provider)
     payload = {"accounts": [dict(PROFILE_PAYLOAD["accounts"][0],
                                  account_homepage_screenshot="A" * 5000)]}
