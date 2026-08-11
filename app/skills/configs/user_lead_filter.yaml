@@ -1,5 +1,5 @@
 skill_id: user_lead_filter
-version: "1.6"
+version: "1.6.1"
 description: >
   无效用户前置过滤：基于用户全量证据包（全部评论+主页画像）识别实际无
   购车意向但易被误判为高价值客户的用户（已购无新购计划/怂恿他人/仅替
@@ -8,5 +8,5 @@ description: >
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_filter_v1.6.txt
-prompt_version: "v1.6"
+prompt_file: user_lead_filter_v1.6.1.txt
+prompt_version: "v1.6.1"

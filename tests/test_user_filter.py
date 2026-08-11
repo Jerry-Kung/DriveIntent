@@ -129,9 +129,9 @@ def test_v16_build_filtered_lead_result_analysis_falls_back_to_reason():
 def test_v16_filter_config():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_filter")
-    assert config.prompt_file == "user_lead_filter_v1.6.txt"
-    assert config.prompt_version == "v1.6"
-    assert config.version == "1.6"
+    assert config.prompt_file == "user_lead_filter_v1.6.1.txt"
+    assert config.prompt_version == "v1.6.1"
+    assert config.version == "1.6.1"
     assert config.multimodal is False
 
 
@@ -148,3 +148,13 @@ def test_v16_filter_prompt_renders_with_categories():
     assert "我朋友想买" in text          # proxy_inquiry 示例
     assert "刚提车" in text              # already_purchased 豁免示例
     assert "comment_time" in text        # 时效性引导
+
+
+def test_v161_filter_prompt_readability_ban():
+    """v1.6.1：过滤输出面向人的文本字段禁用英文字段名/枚举值。"""
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_filter")
+    text = render_prompt(config, {"user_evidence_json": "{}"})
+    assert "不得出现任何英文字段名" in text
+    assert "filtered判定为true" in text          # 反例
+    assert "予以过滤" in text                    # 正例
