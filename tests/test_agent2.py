@@ -68,44 +68,45 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v16_user_analysis_config_uses_v16():
+def test_v162_user_analysis_config_uses_v162():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.6.1.txt"
-    assert config.prompt_version == "v1.6.1"
-    assert config.version == "1.6.1"
+    assert config.prompt_file == "user_lead_analysis_v1.6.2.txt"
+    assert config.prompt_version == "v1.6.2"
+    assert config.version == "1.6.2"
 
 
-def test_v16_user_analysis_prompt_final_adjust_merge_only():
-    """v1.6：第四段只剩合并增强；已购封顶与怂恿降档、营销判无效均已迁出。"""
+def test_v162_user_analysis_prompt_three_stage_no_merge():
+    """v1.6.2：四段流水线收敛为三阶段，合并增强并入基线，merge_boost 已删除。"""
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
     text = render_prompt(config, {
         "user_evidence_json": "{}",
         "grading_standard": "标准",
         "our_models_summary": "- 方舟X7：售价 35-42 万元"})
-    # 四段流水线仍在，第四段仅合并增强
-    assert "四段流水线" in text
-    assert "merge_boost" in text
-    assert "merge_boost_reason" in text
-    assert "酌情将等级上调一级" in text
+    # 三阶段流水线
+    assert "三个阶段" in text
+    assert "[阶段一：基线评级]" in text
+    assert "[阶段二：车型匹配调整]" in text
+    assert "[阶段三：主页画像有限上调]" in text
+    # 合并增强已并入基线，不再是独立阶段
+    assert "merge_boost" not in text
+    assert "累积证据" in text
     # 已迁出规则不复存在
     assert "purchase_downgrade" not in text
-    assert "不得高于 B 级" not in text
     assert "怂恿" not in text
     assert "水军" not in text
-    # 前三段与保留规则回归锚点
+    # 保留规则回归锚点
     assert "baseline_grade" in text
     assert "model_match_level" in text
-    assert "只上调" in text
+    assert "只能上调" in text
     assert "homepage_profile" in text
-    assert "我朋友想买" in text          # 替他人问询证据剔除规则保留
-    assert "完全无购车相关信号" in text  # 窄化保留的 is_valid_lead=false 规则
-    assert "六段" in text
+    assert "我朋友想买" in text
+    assert "完全没有购车相关信号" in text
 
 
 def test_v161_analysis_prompt_readability_ban():
-    """v1.6.1：面向人的文本字段禁用英文字段名/枚举值，analysis 六段业务化。"""
+    """v1.6.1：面向人的文本字段禁用英文字段名/枚举值，analysis 五段业务化。"""
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
     text = render_prompt(config, {
@@ -113,12 +114,12 @@ def test_v161_analysis_prompt_readability_ban():
         "grading_standard": "标准",
         "our_models_summary": "- 方舟X7：售价 35-42 万元"})
     # 全局可读性禁令与正反示例
-    assert "不得出现任何英文字段名" in text
-    assert "is_car_owner判定为true" in text      # 反例（真实泄漏文本）
-    assert "判定该用户为车主且有购车意向" in text  # 正例
-    # analysis_text 六段业务化段名
-    assert "评级调整说明" in text
-    assert "综合评价" in text
+    assert "不得出现英文字段名" in text
+    assert "is_car_owner 为 true" in text          # 反例（真实泄漏文本）
+    assert "该用户疑似已拥有车辆且表达了购车意向" in text  # 正例
+    # analysis_text 业务化段名
+    assert "评论行为与用户身份" in text
+    assert "总体评价" in text
     # 旧诱导措辞已删除
     assert "匹配档位与各段调整" not in text
 
@@ -133,7 +134,7 @@ def test_v12_user_analysis_prompt_has_profile_rules():
     assert "方舟X7" in text          # 我方车型摘要仍注入
     assert "baseline_grade" in text  # 审计字段输出要求
     assert "homepage_profile" in text  # 画像注入位置说明
-    assert "只上调" in text          # 画像上调规则
+    assert "只能上调" in text          # 画像上调规则
 
 
 def test_v11_user_analysis_prompt_has_our_models_var():
@@ -342,23 +343,23 @@ def test_v121_user_lead_result_rejects_invalid_match_level():
         UserLeadResult(lead_grade="B", model_match_level="not_a_level")
 
 
-def test_v151_user_lead_result_final_adjust_defaults():
-    """V1.5.1：终判调整审计字段缺省兼容（旧结果/不含新字段的 LLM 输出）。"""
+def test_v162_user_lead_result_audit_defaults():
+    """V1.6.2：merge_boost 已删除；purchase_downgrade 保留兼容；新增复核审计字段。"""
     from app.schemas.skills import UserLeadResult
     r = UserLeadResult(lead_grade="B")
-    assert r.merge_boost == "none"
-    assert r.merge_boost_reason is None
+    assert not hasattr(r, "merge_boost")
     assert r.purchase_downgrade == "none"
     assert r.purchase_downgrade_reason is None
-    # 显式提供终判调整审计
+    assert r.pre_review_grade is None
+    assert r.review_action == "confirmed"
+    assert r.review_reason is None
+    # 显式提供复核审计
     r2 = UserLeadResult(
-        lead_grade="B", baseline_grade="A",
-        merge_boost="upgraded",
-        merge_boost_reason="多条询价评论对购车倾向有积极印证",
-        purchase_downgrade="capped",
-        purchase_downgrade_reason='评论"大定已下"为已完成购买动作信号')
-    assert r2.merge_boost == "upgraded"
-    assert r2.purchase_downgrade == "capped"
+        lead_grade="H", baseline_grade="A", pre_review_grade="A",
+        review_action="upgraded",
+        review_reason="多条评论跨时间印证持续购车关注，应按最高优先级跟进")
+    assert r2.pre_review_grade == "A"
+    assert r2.review_action == "upgraded"
 
 
 def test_v121_user_analysis_prompt_has_match_rules():
@@ -372,17 +373,17 @@ def test_v121_user_analysis_prompt_has_match_rules():
     assert "model_match_level" in text     # 匹配度审计字段输出要求
     assert "match_adjustment" in text
     assert "unrelated" in text             # 四档档位名
-    assert "降两级" in text                # unrelated 调整幅度
+    assert "下调两级" in text              # unrelated 调整幅度
     assert "匹配度" in text                # analysis_text 五段之一
     assert "baseline_grade" in text        # V1.2 画像规则保留
-    assert "只上调" in text                # V1.2 画像规则保留
+    assert "只能上调" in text              # V1.2 画像规则保留
     assert "homepage_profile" in text      # V1.2 画像注入说明保留
 
 
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6.1"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6.2"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -402,8 +403,7 @@ def test_v13_user_analysis_prompt_has_label_rules():
     # v4 三段流水线与审计字段原样保留
     assert "baseline_grade" in text
     assert "model_match_level" in text
-    assert "只上调" in text
-
+    assert "只能上调" in text
 
 @pytest.mark.asyncio
 async def test_v121_unrelated_model_downgrade_maps_final_grade():

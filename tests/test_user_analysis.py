@@ -20,6 +20,11 @@ LEAD_JSON = json.dumps({
     "evidence_comment_ids": ["__CID__"],
     "confidence": 0.91}, ensure_ascii=False)
 
+REVIEW_CONFIRMED_JSON = json.dumps({
+    "review_action": "confirmed", "reviewed_grade": "H",
+    "review_reason": "初步评级与该用户的实际销售价值一致，予以确认",
+    "confidence": 0.9}, ensure_ascii=False)
+
 
 async def test_run_user_analysis_creates_lead(session):
     _, u1, _, c1, _ = _setup(session)
@@ -42,10 +47,12 @@ async def test_run_user_analysis_upsert(session):
     provider = MockProvider()
     cid = str(c1.id)
     provider.queue(NOT_FILTERED_JSON, LEAD_JSON.replace("__CID__", cid),
+                   REVIEW_CONFIRMED_JSON,
                    NOT_FILTERED_JSON,
                    LEAD_JSON.replace("__CID__", cid)
                             .replace('"lead_grade": "H"',
-                                     '"lead_grade": "A"'))
+                                     '"lead_grade": "A"'),
+                   REVIEW_CONFIRMED_JSON)
     executor = SkillExecutor(LLMGateway(provider))
 
     await run_user_analysis(session, executor, u1.id)
