@@ -1,17 +1,13 @@
 ﻿skill_id: user_lead_analysis
-version: "1.6.2"
+version: "1.6.3"
 description: >
-  Based on the user's full comment history, video context, and statistical features,
-  assess vehicle purchase intent and output H/A/B/C grade, purchase profile, and sales
-  recommendations. Independently determines account-level car-owner and purchase-intent
-  labels. Grading uses a THREE-stage pipeline: comment baseline (cumulative reinforcement
-  from multiple similar comments merged into Stage 1) -> on-sale model match adjustment
-  (4 tiers) -> homepage profile limited upgrade. merge_boost Stage 4 removed; logic
-  folded into baseline grading standard. Results proceed to independent review node
-  user_lead_review (V1.6.2). Invalid-user handling (already-purchased cap, promoters,
-  marketers) remains in upstream filter user_lead_filter (V1.6).
+  基于用户完整评论历史、视频语境与统计特征评估购车意向，输出 H/A/B/C 定级、购车画像与销售建议，并独立判定账号级车主/购车意向两标签。
+  定级为三阶段流水线：评论基线（多条同质评论的累积强化已并入基线） → 在售车型匹配（四档调整） → 主页画像有限上调。
+  analysis_text 固定分五段、带段标题，供下游复核节点定位第五段“总体评价”。
+  结果交由独立复核节点 user_lead_review 复核。
+  无效用户（已购封顶、推广者、疑似营销号等）由前置过滤节点 user_lead_filter 处理。
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_analysis_v1.6.2.txt
-prompt_version: "v1.6.2"
+prompt_file: user_lead_analysis_v1.6.3.txt
+prompt_version: "v1.6.3"

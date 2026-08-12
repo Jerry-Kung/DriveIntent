@@ -68,14 +68,6 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
-def test_v162_user_analysis_config_uses_v162():
-    from app.skills.executor import load_skill_config
-    config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.6.2.txt"
-    assert config.prompt_version == "v1.6.2"
-    assert config.version == "1.6.2"
-
-
 def test_v162_user_analysis_prompt_three_stage_no_merge():
     """v1.6.2：四段流水线收敛为三阶段，合并增强并入基线，merge_boost 已删除。"""
     from app.skills.executor import load_skill_config, render_prompt
@@ -383,7 +375,7 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6.2"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.6.3"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -570,3 +562,34 @@ async def test_v16_unfiltered_account_proceeds_to_grading():
     r = out["results"][0]
     assert r["has_value"] is True
     assert r["intent_level_code"] == "high"
+
+
+def test_v163_analysis_prompt_has_fixed_section_headings():
+    """V1.6.3：analysis_text 五段须有固定中文标题，供复核节点定位第五段。"""
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    for heading in ("一、评论行为与用户身份",
+                    "二、购车阶段评估",
+                    "三、目标车型与我方车型匹配度",
+                    "四、主页画像与调整结论",
+                    "五、总体评价"):
+        assert heading in text
+    assert "标题独占一行" in text
+    # 三阶段流水线：既有规则原样保留
+    assert "[阶段一：基线评级]" in text
+    assert "[阶段二：车型匹配调整]" in text
+    assert "[阶段三：主页画像有限上调]" in text
+    assert "只能上调" in text
+    assert "不得出现英文字段名" in text
+
+
+def test_v163_analysis_config_uses_v163():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("user_lead_analysis")
+    assert config.prompt_file == "user_lead_analysis_v1.6.3.txt"
+    assert config.prompt_version == "v1.6.3"
+    assert config.version == "1.6.3"
