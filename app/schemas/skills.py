@@ -1,4 +1,4 @@
-from typing import Literal
+﻿from typing import Literal
 
 from pydantic import BaseModel
 
@@ -86,14 +86,33 @@ class UserLeadResult(BaseModel):
     # 审计链条：baseline_grade →(match_adjustment)→ 中间等级1
     #          →(profile_adjustment)→ 中间等级2
     #          →(merge_boost / purchase_downgrade)→ lead_grade
-    merge_boost: str = "none"  # none | upgraded
-    merge_boost_reason: str | None = None
+    # V1.6.2: merge_boost removed; purchase_downgrade kept for compat
     purchase_downgrade: str = "none"  # none | capped
     purchase_downgrade_reason: str | None = None
+    # V1.6.2: independent review audit fields (internal only, not in external API contract)
+    # audit chain: baseline_grade ->(match_adjustment)-> mid_grade1
+    #              ->(profile_adjustment)-> pre_review_grade
+    #              ->(review_action)-> lead_grade
+    pre_review_grade: str | None = None   # preliminary grade before review
+    review_action: str = "confirmed"      # confirmed | upgraded | downgraded
+    review_reason: str | None = None
     # V1.6：无效用户过滤审计字段（内部用，不进对外 API 契约）。
     # 被前置过滤节点命中时写入；未过滤（走完整定级流水线）为 None。
     filter_category: str | None = None
     filter_reason: str | None = None
+    confidence: float = 0.0
+
+
+class UserLeadReviewResult(BaseModel):
+    """V1.6.2 independent review node output.
+
+    Audits the preliminary lead_grade from user_lead_analysis from a
+    salesperson's perspective. fail-open: if the review call fails the
+    caller keeps the preliminary grade unchanged.
+    """
+    review_action: str = "confirmed"   # confirmed | upgraded | downgraded
+    reviewed_grade: str = "C"          # H | A | B | C
+    review_reason: str | None = None
     confidence: float = 0.0
 
 

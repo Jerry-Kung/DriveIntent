@@ -1,4 +1,4 @@
-import json
+﻿import json
 
 from sqlalchemy.orm import Session
 
@@ -6,21 +6,23 @@ from app.config import settings
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.models import AnalysisResult, Comment, Video
 from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
-                                VideoContextResult)
+                                UserLeadReviewResult, VideoContextResult)
 from app.services.results import get_current_result, save_result
-from app.skills.executor import (SkillExecutionError, SkillExecutor,
-                                 load_skill_config)
+from app.skills.executor import (PROMPT_DIR, SkillExecutionError,
+                                 SkillExecutor, load_skill_config)
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
 from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
 COMMENT_SCREENING_SKILL = "comment_lead_screening"
 USER_ANALYSIS_SKILL = "user_lead_analysis"
+USER_REVIEW_SKILL = "user_lead_review"
 
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
     COMMENT_SCREENING_SKILL: "1.3",
-    USER_ANALYSIS_SKILL: "1.6.1",
+    USER_ANALYSIS_SKILL: "1.6.2",
+    USER_REVIEW_SKILL: "1.6.2",
 }
 
 
@@ -114,15 +116,8 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
     await screen_comment_batch(session, executor, video_id, resolved_ids[mid:])
 
 
-GRADING_STANDARD = """H级（极高意向）：出现明确交易或行动信号——询问价格/落地价、优惠、
-置换补贴、金融方案、门店/库存/交付、试驾，或明确表达近期购买换车计划。
-A级（较强意向）：进入主动评估对比阶段——对比竞品、讨论优缺点、深入配置差异、
-关注养车成本/保值率/售后、讨论真实使用场景。
-B级（中等意向）：有产品兴趣但未深度决策——讨论外观内饰、浅层配置咨询、
-"有点心动"、未来可能考虑。
-C级（较低意向）：与汽车相关但意向弱——普通吐槽、玩梗、浅层情绪表达。
-判定以购车决策阶段和行动信号为主要标准；同时符合多级时取最高一级；
-没有证据支撑的信息保持未知（null 或空数组），不得推断职业、收入、家庭情况。"""
+GRADING_STANDARD = (PROMPT_DIR / "grading_standard.txt").read_text(
+    encoding="utf-8").strip()
 
 
 async def run_user_analysis(session: Session, executor: SkillExecutor,
@@ -146,6 +141,25 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     else:
         out = await executor.run(
             USER_ANALYSIS_SKILL, context, UserLeadResult)
+        # V1.6.2: independent review node (fail-open — any exception keeps
+        # the preliminary grade; filtered results skip review entirely).
+        try:
+            review_context = {
+                "user_evidence_json": context["user_evidence_json"],
+                "grading_standard": GRADING_STANDARD,
+                "our_models_summary": context["our_models_summary"],
+                "preliminary_result_json": json.dumps(
+                    out.model_dump(), ensure_ascii=False),
+            }
+            review: UserLeadReviewResult = await executor.run(
+                USER_REVIEW_SKILL, review_context, UserLeadReviewResult)
+            out.pre_review_grade = out.lead_grade
+            out.review_action = review.review_action
+            out.review_reason = review.review_reason
+            if review.review_action != "confirmed":
+                out.lead_grade = review.reviewed_grade  # type: ignore[assignment]
+        except Exception:
+            pass  # fail-open: keep preliminary lead_grade unchanged
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,

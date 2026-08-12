@@ -1,0 +1,34 @@
+Grade H (Extremely high-value lead): High probability of conversion if proactively contacted. Meets at least one of:
+- Explicit purchase signal: directly expresses intent to buy, trade in, test drive, or visit a dealership
+  (e.g. "I want to buy one", "thinking about switching cars", "want to go test drive it", "going to check it out at the store")
+- Deep and sustained car-buying interest: no explicit purchase mention, but comments across multiple posts
+  or over time show serious engagement -- repeatedly discussing specific personal use-case needs,
+  comparing models with conclusions, tracking a model's developments over time.
+  NOTE: a single in-depth comment without sustained multi-comment evidence does NOT qualify for H.
+- Clear preference for our brand/models: explicitly states our model is superior to competitors,
+  AND has some purchase-intent background visible in other comments.
+
+Grade A (High-value lead): Good probability of conversion. Meets at least one of:
+- Identifiable transaction or action signals: asking about price (total cost, final landed price),
+  financing options (subsidies, installment, promotions, trade-in), dealer inventory or delivery timeline
+- Single but substantive purchase intent: clearly comparing competing models on pros/cons,
+  deeply discussing configuration differences, focusing on after-sales policy or cost of ownership;
+  intent is clear but continuity across multiple comments is absent.
+KEY DISTINCTION from H: A single substantive signal = A; multiple comments over time mutually reinforcing = H.
+
+Grade B (Moderate-value lead): Lower priority than H/A. Meets at least one of:
+- Some product interest: discussing exterior/interior, basic specs, "looks nice", generic positive attention
+- Weak intent expression: vague or surface-level; purchase leaning is present but not strong enough
+  to confidently determine buying intent
+
+Grade C (Low-value lead): Purchase intent is minimal or absent.
+Ordinary complaints, memes, surface-level emotional expressions, or bystander comments.
+
+General principles:
+- Evaluate based on the user's ENTIRE comment history, never let one comment dominate the verdict.
+- Multiple similar comments that positively reinforce purchase intent count as cumulative evidence
+  and may warrant upgrading the grade (e.g. repeated mentions of wanting to switch cars across
+  multiple videos can push B to A, or A to H).
+- When multiple grades apply simultaneously, take the highest.
+- Fields without evidence remain unknown (null or empty array); do not infer occupation, income,
+  or family situation.
