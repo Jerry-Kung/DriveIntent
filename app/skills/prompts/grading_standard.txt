@@ -1,34 +1,31 @@
-Grade H (Extremely high-value lead): High probability of conversion if proactively contacted. Meets at least one of:
-- Explicit purchase signal: directly expresses intent to buy, trade in, test drive, or visit a dealership
-  (e.g. "I want to buy one", "thinking about switching cars", "want to go test drive it", "going to check it out at the store")
-- Deep and sustained car-buying interest: no explicit purchase mention, but comments across multiple posts
-  or over time show serious engagement -- repeatedly discussing specific personal use-case needs,
-  comparing models with conclusions, tracking a model's developments over time.
-  NOTE: a single in-depth comment without sustained multi-comment evidence does NOT qualify for H.
-- Clear preference for our brand/models: explicitly states our model is superior to competitors,
-  AND has some purchase-intent background visible in other comments.
+H 级（极高价值线索）：主动联系后的成交概率最高。满足以下任意一项即可：
+- 明确购车信号：直接表达购买、换车、试驾或到店看车的意向
+  （例如："我要买一台"、"想换车了"、"想去试驾"、"打算去店里看看"）
+- 深度且持续的购车关注：没有明确的购车表述，但多条评论或跨时间的评论
+  显示出持续的认真参与——反复讨论具体的个人用车需求、
+  对比车型并得出结论、长期追踪某款车型的动态。
+  注意：仅一条深度评论、缺乏多条相互印证的持续性证据，不达 H 级。
+- 明确偏好我方品牌/车型：明确表示我方车型优于竞品，
+  且在其他评论中能见到一致的购车意向背景。
 
-Grade A (High-value lead): Good probability of conversion. Meets at least one of:
-- Identifiable transaction or action signals: asking about price (total cost, final landed price),
-  financing options (subsidies, installment, promotions, trade-in), dealer inventory or delivery timeline
-- Single but substantive purchase intent: clearly comparing competing models on pros/cons,
-  deeply discussing configuration differences, focusing on after-sales policy or cost of ownership;
-  intent is clear but continuity across multiple comments is absent.
-KEY DISTINCTION from H: A single substantive signal = A; multiple comments over time mutually reinforcing = H.
+A 级（高价值线索）：转化概率较好。满足以下任意一项：
+- 可识别的交易或行动信号：询问价格（落地价、综合费用）、
+  金融方案（补贴、分期、优惠、置换）、经销商库存或交车周期
+- 单条但实质性的购车意向：明确对比竞品优劣、
+  深入讨论配置差异、关注售后政策或用车成本；
+  意向明确，但缺乏多条评论体现的延续性。
+关键区分（与 H 的边界）：单条实质性信号 = A；多条评论跨时间相互印证 = H。
 
-Grade B (Moderate-value lead): Lower priority than H/A. Meets at least one of:
-- Some product interest: discussing exterior/interior, basic specs, "looks nice", generic positive attention
-- Weak intent expression: vague or surface-level; purchase leaning is present but not strong enough
-  to confidently determine buying intent
+B 级（中等价值线索）：优先级低于 H/A。满足以下任意一项：
+- 一定的产品兴趣：讨论外观内饰、基础参数，"看着不错"，泛化的正向关注
+- 弱意向表达：模糊或表浅的表述；有购车倾向但不足以确定明确购车意向
 
-Grade C (Low-value lead): Purchase intent is minimal or absent.
-Ordinary complaints, memes, surface-level emotional expressions, or bystander comments.
+C 级（低价值线索）：购车意向极少或缺失。
+普通抱怨、表情包、表浅的情绪表达或旁观者评论。
 
-General principles:
-- Evaluate based on the user's ENTIRE comment history, never let one comment dominate the verdict.
-- Multiple similar comments that positively reinforce purchase intent count as cumulative evidence
-  and may warrant upgrading the grade (e.g. repeated mentions of wanting to switch cars across
-  multiple videos can push B to A, or A to H).
-- When multiple grades apply simultaneously, take the highest.
-- Fields without evidence remain unknown (null or empty array); do not infer occupation, income,
-  or family situation.
+通用原则：
+- 基于用户的完整评论历史进行评估，不允许单条评论主导判定结论。
+- 多条同质评论正向强化购车意向的，可作为累积证据，
+  视情况上调评级（例如在多个视频中反复提及想换车，可将 B 升至 A，或将 A 推至 H）。
+- 同时符合多个级别时，取最高级。
+- 无证据支撑的字段保持未知（null 或空数组）；不得推断职业、收入或家庭状况。
