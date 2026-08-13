@@ -7,6 +7,8 @@ from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
 from tests.test_user_filter import NOT_FILTERED_JSON
+from tests.test_analysis_polish import POLISH_OK_JSON, POLISHED
+from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
 
 
 def _executor_and_gateway(*responses):
@@ -23,7 +25,9 @@ async def test_profile_with_screenshot():
         "evidence_comment_ids": ["x"], "confidence": 0.9,
         "profile_tags": ["已购车主"], "profile_summary": "画像",
         "analysis_text": "分析"})
-    executor, gateway = _executor_and_gateway("这是科技博主主页", NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        "这是科技博主主页", NOT_FILTERED_JSON, lead,
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u1", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -55,7 +59,8 @@ async def test_profile_no_screenshot_lowers_score():
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["x"], "confidence": 0.8,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)  # 无截图→过滤+分析两次调用
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u3", "account_name": "用户",
         "account_homepage_screenshot": "",
@@ -276,7 +281,8 @@ async def test_v12_profile_upgrade_maps_final_grade():
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "自驾意向",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.85,
         "profile_tags": ["自驾爱好者"], "profile_summary": "画像", "analysis_text": "分析"})
-    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        profile, NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u1", "account_name": "应许",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -301,7 +307,8 @@ async def test_v12_profile_baseline_c_not_upgraded():
         "adjustment_reason": None, "lead_grade": "C", "is_valid_lead": False,
         "evidence_comment_ids": ["u4:0"], "confidence": 0.6,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        profile, NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u4", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -413,7 +420,8 @@ async def test_v121_unrelated_model_downgrade_maps_final_grade():
         "evidence_comment_ids": ["u5:0"], "confidence": 0.85,
         "profile_tags": [], "profile_summary": "p",
         "analysis_text": "含匹配度段的五段分析"})
-    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        profile, NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u5", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -445,7 +453,8 @@ async def test_v121_our_model_upgrade_maps_final_grade():
         "evidence_comment_ids": ["u6:0"], "confidence": 0.9,
         "profile_tags": [], "profile_summary": "p",
         "analysis_text": "五段分析"})
-    executor, gateway = _executor_and_gateway(profile, NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        profile, NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u6", "account_name": "用户",
         "account_homepage_screenshot": "https://cdn/x.png",
@@ -481,7 +490,8 @@ async def test_v13_profile_result_carries_labels():
         "evidence_comment_ids": ["x"], "confidence": 0.8,
         "is_car_owner": True, "has_purchase_intent": True,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u9", "account_name": "用户",
         "account_homepage_screenshot": "",
@@ -551,7 +561,8 @@ async def test_v16_unfiltered_account_proceeds_to_grading():
         "lead_grade": "H", "is_valid_lead": True, "lead_summary": "s",
         "evidence_comment_ids": ["u2:0"], "confidence": 0.9,
         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
-    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     req = ProfileAnalysisRequest(accounts=[{
         "account_uid": "u2", "account_name": "用户",
         "account_homepage_screenshot": "",
@@ -646,3 +657,76 @@ def test_v163_review_pipeline_version_synced():
     assert SKILL_VERSIONS[USER_REVIEW_SKILL] == "1.6.3"
     assert (load_skill_config(USER_REVIEW_SKILL).version
             == SKILL_VERSIONS[USER_REVIEW_SKILL])
+
+
+@pytest.mark.asyncio
+async def test_v164_api_review_upgraded_changes_level():
+    """API 路径复核上调：A→H 反映到对外 intent_level，analysis 为润色文本。"""
+    from tests.test_analysis_polish import ORIG
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
+        "evidence_comment_ids": ["u9:0"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "画像",
+        "analysis_text": ORIG}, ensure_ascii=False)
+    review = json.dumps({
+        "review_action": "upgraded", "reviewed_grade": "H",
+        "review_reason": "多条评论持续深度关注，初评偏保守",
+        "revised_conclusion": "持续深度关注，判定为高价值线索，建议优先跟进。",
+        "revised_lead_summary": "建议优先联系。",
+        "confidence": 0.9}, ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, review, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u9", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "对比", "comment_content": "在看",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_level_code"] == "high"      # 复核上调生效
+    assert r["analysis"] == POLISHED             # 对外为润色后文本
+
+
+@pytest.mark.asyncio
+async def test_v164_api_filtered_skips_review_and_polish():
+    """被过滤账号不进复核与润色：只消费一个过滤响应。"""
+    from tests.test_user_filter import FILTERED_JSON
+    provider = MockProvider()
+    provider.queue(FILTERED_JSON, "哨兵：不应被消费")
+    gateway = LLMGateway(provider)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u10", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "分享", "comment_content": "提车三个月",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(SkillExecutor(gateway), gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is False
+    # 注：ProfileResult.error 默认 None，model_dump() 恒含该键，故用取值
+    # 而非成员判断校验未触发兜底分支（成员判断在当前契约下恒为假）。
+    assert r["error"] is None                     # 未触发兜底分支
+    assert provider._responses == ["哨兵：不应被消费"]   # 复核/润色均未调用
+
+
+@pytest.mark.asyncio
+async def test_v164_api_review_failure_fail_open():
+    """API 路径复核+润色失败：定级结果原样对外，不产生 error。"""
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
+        "evidence_comment_ids": ["u11:0"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "画像",
+        "analysis_text": "分析原文"}, ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u11", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "对比", "comment_content": "在看",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_level_code"] == "medium"     # 初步 A 级保留
+    assert r["analysis"] == "分析原文"             # 文本保留
+    assert r["error"] is None
