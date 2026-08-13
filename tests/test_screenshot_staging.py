@@ -18,6 +18,8 @@ from app.api.worker import ApiJobWorker
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.skills.executor import SkillExecutor
+from tests.test_analysis_polish import POLISH_OK_JSON, POLISHED
+from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 
 LEAD_JSON = ('{"lead_grade": "H", "is_valid_lead": true,'
@@ -116,7 +118,8 @@ async def test_worker_reads_staged_screenshot_and_stores_text(session):
     staging.save(job.id, {"0": BASE64})
 
     assert await _worker(
-        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
+        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON,
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON).run_once() is True
 
     session.expire_all()
     saved = get_job(session, job.id)
@@ -125,6 +128,8 @@ async def test_worker_reads_staged_screenshot_and_stores_text(session):
     assert acc["account_homepage_screenshot"] == ""
     assert acc["homepage_vision_text"] == VISION_JSON
     assert staging.load(job.id) == {}, "终态后暂存文件应已删除"
+    # 复核+润色真实走到：落库结果 analysis 变为润色后文本
+    assert saved.result["results"][0]["analysis"] == POLISHED
 
 
 @pytest.mark.asyncio
@@ -134,12 +139,16 @@ async def test_legacy_inline_screenshot_still_works(session):
     job = create_job(session, "profile_analysis", payload, total=1)
 
     assert await _worker(
-        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
+        session, VISION_JSON, NOT_FILTERED_JSON, LEAD_JSON,
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON).run_once() is True
 
     session.expire_all()
-    acc = get_job(session, job.id).request_payload["accounts"][0]
+    saved = get_job(session, job.id)
+    acc = saved.request_payload["accounts"][0]
     assert acc["account_homepage_screenshot"] == "", "存量 base64 须被清空"
     assert acc["homepage_vision_text"] == VISION_JSON
+    # 复核+润色真实走到：落库结果 analysis 变为润色后文本
+    assert saved.result["results"][0]["analysis"] == POLISHED
 
 
 @pytest.mark.asyncio
@@ -150,12 +159,15 @@ async def test_missing_staging_degrades_to_no_screenshot(session):
     # 不写暂存文件，模拟人工清理/磁盘故障
 
     assert await _worker(
-        session, NOT_FILTERED_JSON, LEAD_JSON).run_once() is True
+        session, NOT_FILTERED_JSON, LEAD_JSON,
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON).run_once() is True
 
     session.expire_all()
     saved = get_job(session, job.id)
     assert saved.status == "success"
     assert saved.result["results"][0]["error"] is None
+    # 复核+润色真实走到：落库结果 analysis 变为润色后文本
+    assert saved.result["results"][0]["analysis"] == POLISHED
 
 
 @pytest.mark.asyncio

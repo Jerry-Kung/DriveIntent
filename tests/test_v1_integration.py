@@ -12,6 +12,8 @@ from app.api.worker import ApiJobWorker
 from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
+from tests.test_analysis_polish import POLISH_OK_JSON, POLISHED
+from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 
 
@@ -81,7 +83,7 @@ async def test_profile_analysis_end_to_end_no_screenshot(env):
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.8,
         "profile_tags": ["对比阶段"], "profile_summary": "画像",
-        "analysis_text": "分析"}))
+        "analysis_text": "分析"}), REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     executor = SkillExecutor(LLMGateway(provider))
     worker = ApiJobWorker(lambda: Session(), executor, LLMGateway(provider))
     await worker.run_once()
@@ -90,3 +92,5 @@ async def test_profile_analysis_end_to_end_no_screenshot(env):
                       headers={"Authorization": "Bearer secret"}).json()
     assert body["status"] == "success"
     assert body["result"]["results"][0]["intent_level_code"] == "medium"
+    # 复核+润色真实走完整个节点序列：响应体 analysis 变为润色后文本
+    assert body["result"]["results"][0]["analysis"] == POLISHED

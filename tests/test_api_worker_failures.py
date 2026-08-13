@@ -6,6 +6,8 @@ from app.api.worker import ApiJobWorker
 from app.llm.mock import MockProvider
 from app.llm.gateway import LLMGateway
 from app.skills.executor import SkillExecutor
+from tests.test_analysis_polish import POLISH_OK_JSON, POLISHED
+from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 
 
@@ -44,13 +46,14 @@ async def test_worker_comment_job_fails_when_llm_keeps_failing(session):
 
 @pytest.mark.asyncio
 async def test_worker_profile_analysis_job_partial_when_one_account_fails(session):
-    # 只 queue 第一个账号的合法分析响应，第二个账号 LLM 持续失败
+    # u1：过滤+定级+复核+润色全套响应齐全，验证完整节点序列真实走到；
+    # u2：不再补充响应，队列耗尽 → LLM 持续失败，保持"部分失败"语义
     provider = MockProvider()
     provider.queue(NOT_FILTERED_JSON, json.dumps({
         "lead_grade": "A", "is_valid_lead": True, "lead_summary": "对比中",
         "evidence_comment_ids": ["u1:0"], "confidence": 0.8,
         "profile_tags": ["对比阶段"], "profile_summary": "画像",
-        "analysis_text": "分析"}))
+        "analysis_text": "分析"}), REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     executor = SkillExecutor(LLMGateway(provider))
     gateway = LLMGateway(provider)
 
@@ -79,5 +82,7 @@ async def test_worker_profile_analysis_job_partial_when_one_account_fails(sessio
     results = row.result["results"]
     assert results[0]["account_uid"] == "u1"
     assert not results[0].get("error")
+    # 复核+润色真实走到：u1 落库结果 analysis 变为润色后文本
+    assert results[0]["analysis"] == POLISHED
     assert results[1]["account_uid"] == "u2"
     assert results[1].get("error")

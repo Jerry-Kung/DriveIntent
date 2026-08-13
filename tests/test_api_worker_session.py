@@ -15,6 +15,8 @@ from app.api.worker import ApiJobWorker
 from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.skills.executor import SkillExecutor
+from tests.test_analysis_polish import POLISH_OK_JSON, POLISHED
+from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 
 
@@ -133,7 +135,8 @@ async def test_profile_job_releases_connection_during_vision(session):
 async def test_worker_still_strips_screenshot_on_success(session):
     """终态剥离截图（V1.4 行为）经由 finish_job_by_id 仍须生效。"""
     provider = MockProvider()
-    provider.queue('{"content_theme": "汽车"}', NOT_FILTERED_JSON, LEAD_JSON)
+    provider.queue('{"content_theme": "汽车"}', NOT_FILTERED_JSON, LEAD_JSON,
+                   REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     gateway = LLMGateway(provider)
     payload = {"accounts": [dict(PROFILE_PAYLOAD["accounts"][0],
                                  account_homepage_screenshot="A" * 5000)]}
@@ -148,6 +151,8 @@ async def test_worker_still_strips_screenshot_on_success(session):
     assert saved.request_payload["accounts"][0][
         "account_homepage_screenshot"] == ""
     assert saved.request_payload["accounts"][0]["account_uid"] == "u1"
+    # 复核+润色真实走到：落库结果 analysis 变为润色后文本
+    assert saved.result["results"][0]["analysis"] == POLISHED
 
 
 @pytest.mark.asyncio

@@ -8,8 +8,9 @@ from app.skills.executor import SkillExecutor
 from app.workflow.pipeline import (SKILL_VERSIONS, VIDEO_CONTEXT_SKILL,
                                    advance, schedule_analysis)
 from app.workflow.worker import Worker
+from tests.test_analysis_polish import POLISH_OK_JSON
 from tests.test_comment_screening import _item
-from tests.test_user_analysis import LEAD_JSON
+from tests.test_user_analysis import LEAD_JSON, REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 from app.models import Comment, PlatformUser, Video
 import app.workflow.worker as worker_module
@@ -31,7 +32,8 @@ async def test_worker_full_pipeline(session):
         CONTEXT_JSON,
         json.dumps({"items": [_item(c.id)]}, ensure_ascii=False),
         NOT_FILTERED_JSON,
-        LEAD_JSON.replace("__CID__", str(c.id)))
+        LEAD_JSON.replace("__CID__", str(c.id)),
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     worker = Worker(lambda: session,
                     SkillExecutor(LLMGateway(provider)))
 
@@ -42,6 +44,12 @@ async def test_worker_full_pipeline(session):
     assert session.query(AnalysisTask).filter_by(status="failed").count() == 0
     lead = session.query(Lead).one()
     assert lead.grade == "H" and lead.user_id == u.id
+
+    from app.models import AnalysisResult
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u.id)).one().result
+    assert res["review_action"] == "confirmed"     # 复核真实走到
+    assert res["analysis_polish"] == "polished"    # 润色真实走到
 
 
 async def test_run_once_closes_session_on_every_path(session, monkeypatch):
