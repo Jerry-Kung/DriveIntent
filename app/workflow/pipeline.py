@@ -22,7 +22,7 @@ SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
     COMMENT_SCREENING_SKILL: "1.3",
     USER_ANALYSIS_SKILL: "1.6.3",
-    USER_REVIEW_SKILL: "1.6.2",
+    USER_REVIEW_SKILL: "1.6.3",
 }
 
 
@@ -186,9 +186,19 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
             out.review_action = review.review_action
             out.review_reason = review.review_reason
             if review.review_action != "confirmed":
+                # V1.6.3：等级与对外叙述必须同进同退。先全部算完再一次性
+                # 赋值，杜绝"等级已改、文本仍在论证旧等级"的中间态——那
+                # 正是本版要消灭的矛盾。
+                new_text, revision = _revise_analysis(
+                    out.analysis_text, review.revised_conclusion)
+                new_summary = (review.revised_lead_summary or "").strip()
+                out.analysis_text = new_text
+                out.analysis_revision = revision
+                if new_summary:
+                    out.lead_summary = new_summary
                 out.lead_grade = review.reviewed_grade  # type: ignore[assignment]
         except Exception:
-            pass  # fail-open: keep preliminary lead_grade unchanged
+            pass  # fail-open: keep preliminary lead_grade and narrative
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,

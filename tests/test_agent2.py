@@ -617,3 +617,32 @@ def test_v163_user_lead_result_analysis_revision_default():
     assert r.analysis_revision == "none"
     r2 = UserLeadResult(lead_grade="H", analysis_revision="replaced")
     assert r2.analysis_revision == "replaced"
+
+
+def test_v163_review_prompt_and_config():
+    """V1.6.3：复核 Prompt 要能即时渲染、字段齐备且不含英文枚举。"""
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_review")
+    assert config.prompt_file == "user_lead_review_v1.6.3.txt"
+    assert config.prompt_version == "v1.6.3"
+    assert config.version == "1.6.3"
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元",
+        "preliminary_result_json": "{}"})
+    assert "revised_conclusion" in text
+    assert "revised_lead_summary" in text
+    assert "不含段标题" in text
+    assert "confirmed" in text
+    # 既有复核功能保留
+    assert "review_action" in text
+    assert "reviewed_grade" in text
+
+
+def test_v163_review_pipeline_version_synced():
+    from app.skills.executor import load_skill_config
+    from app.workflow.pipeline import SKILL_VERSIONS, USER_REVIEW_SKILL
+    assert SKILL_VERSIONS[USER_REVIEW_SKILL] == "1.6.3"
+    assert (load_skill_config(USER_REVIEW_SKILL).version
+            == SKILL_VERSIONS[USER_REVIEW_SKILL])

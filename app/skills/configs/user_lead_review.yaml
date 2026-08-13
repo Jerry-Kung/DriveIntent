@@ -1,11 +1,14 @@
 skill_id: user_lead_review
-version: "1.6.2"
+version: "1.6.3"
 description: >
   对 user_lead_analysis 的初步定级结果进行独立复核。
   以销售人员视角重新审视全部用户证据，判断定级是否与实际销售价值吻合，
   输出复核等级与修订行动（confirmed / upgraded / downgraded）。
+  改级时一并给出修订后的"总体评价"正文与速读结论，
+  由 pipeline 替换 analysis_text 第五段与 lead_summary，
+  确保对外叙述与最终等级一致。
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_review_v1.6.2.txt
-prompt_version: "v1.6.2"
+prompt_file: user_lead_review_v1.6.3.txt
+prompt_version: "v1.6.3"
