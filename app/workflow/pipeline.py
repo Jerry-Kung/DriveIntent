@@ -120,6 +120,35 @@ GRADING_STANDARD = (PROMPT_DIR / "grading_standard.txt").read_text(
     encoding="utf-8").strip()
 
 
+# V1.6.3：analysis_text 第五段的定位锚点，须与定级 Prompt
+# （user_lead_analysis_v1.6.3.txt）中的第五个段标题逐字一致。
+CONCLUSION_ANCHOR = "五、总体评价"
+
+
+def _revise_analysis(analysis_text: str,
+                     revised_conclusion: str | None) -> tuple[str, str]:
+    """用复核给出的新结论替换 analysis_text 的第五段"总体评价"。
+
+    返回 (新 analysis_text, analysis_revision)。纯函数，不抛异常。
+    前四段是与等级无关的事实陈述，必须逐字保留——把"原样照抄"交给模型
+    做不可靠，只有代码切分能兑现这一点。锚点缺失时退化为文末追加，
+    宁可效果打折也绝不失败。
+    """
+    body = (revised_conclusion or "").strip()
+    if not body:
+        return analysis_text, "none"
+    # 模型可能不听话地把段标题也写进正文，剥掉避免重复标题
+    if body.startswith(CONCLUSION_ANCHOR):
+        body = body[len(CONCLUSION_ANCHOR):].lstrip("：: \t\n")
+    text = analysis_text or ""
+    # 总体评价是末段：用最后一次出现，避开前文对该标题的引用
+    idx = text.rfind(CONCLUSION_ANCHOR)
+    if idx >= 0:
+        return f"{text[:idx]}{CONCLUSION_ANCHOR}\n{body}", "replaced"
+    sep = "\n\n" if text else ""
+    return f"{text}{sep}{CONCLUSION_ANCHOR}（复核修订）\n{body}", "appended"
+
+
 async def run_user_analysis(session: Session, executor: SkillExecutor,
                             user_id: int) -> None:
     from app.services.aggregation import build_user_evidence
