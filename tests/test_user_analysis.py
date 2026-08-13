@@ -29,7 +29,8 @@ REVIEW_CONFIRMED_JSON = json.dumps({
 async def test_run_user_analysis_creates_lead(session):
     _, u1, _, c1, _ = _setup(session)
     provider = MockProvider()
-    provider.queue(NOT_FILTERED_JSON, LEAD_JSON.replace("__CID__", str(c1.id)))
+    provider.queue(NOT_FILTERED_JSON, LEAD_JSON.replace("__CID__", str(c1.id)),
+                   REVIEW_CONFIRMED_JSON)
     executor = SkillExecutor(LLMGateway(provider))
 
     await run_user_analysis(session, executor, u1.id)
@@ -67,7 +68,8 @@ async def test_run_user_analysis_filters_hallucinated_evidence_ids(session):
     provider = MockProvider()
     payload = json.loads(LEAD_JSON)
     payload["evidence_comment_ids"] = [str(c1.id), "999999"]
-    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False))
+    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False),
+                   REVIEW_CONFIRMED_JSON)
     executor = SkillExecutor(LLMGateway(provider))
 
     await run_user_analysis(session, executor, u1.id)
@@ -84,7 +86,8 @@ async def test_run_user_analysis_invalid_lead_creates_no_lead(session):
     payload["lead_grade"] = "C"
     payload["is_valid_lead"] = False
     payload["evidence_comment_ids"] = [str(c1.id)]
-    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False))
+    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False),
+                   REVIEW_CONFIRMED_JSON)
     executor = SkillExecutor(LLMGateway(provider))
 
     await run_user_analysis(session, executor, u1.id)
@@ -100,7 +103,8 @@ async def test_run_user_analysis_valid_lead_all_evidence_hallucinated_creates_no
     payload = json.loads(LEAD_JSON)
     payload["is_valid_lead"] = True
     payload["evidence_comment_ids"] = ["888888", "999999"]  # 全部幻觉 ID
-    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False))
+    provider.queue(NOT_FILTERED_JSON, json.dumps(payload, ensure_ascii=False),
+                   REVIEW_CONFIRMED_JSON)
     executor = SkillExecutor(LLMGateway(provider))
 
     await run_user_analysis(session, executor, u1.id)

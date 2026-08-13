@@ -4,7 +4,16 @@ analysis_text 第五段"总体评价"与 HABC 绑定，复核改级后必须随�
 否则对销售人员呈现"最终 H 级、全文论证 A 级"的矛盾文本。前四段是事实
 陈述，与等级无关，必须逐字保留——这是代码切分（而非让模型照抄）的理由。
 """
-from app.workflow.pipeline import CONCLUSION_ANCHOR, _revise_analysis
+import json
+
+from app.llm.gateway import LLMGateway
+from app.llm.mock import MockProvider
+from app.models import AnalysisResult
+from app.skills.executor import SkillExecutor
+from app.workflow.pipeline import (CONCLUSION_ANCHOR, _revise_analysis,
+                                   run_user_analysis)
+from tests.test_aggregation import _setup
+from tests.test_user_filter import NOT_FILTERED_JSON
 
 FOUR = ("一、评论行为与用户身份\n该用户多次在评论中询价。\n"
         "二、购车阶段评估\n处于积极对比阶段。\n"
@@ -64,3 +73,118 @@ def test_empty_analysis_text_appends_without_leading_blank_lines():
     new, revision = _revise_analysis("", NEW_BODY)
     assert revision == "appended"
     assert new == CONCLUSION_ANCHOR + "（复核修订）\n" + NEW_BODY
+
+
+PRELIM_ANALYSIS = ANALYSIS  # 五段齐全、第五段论证 A 级
+
+
+def _lead_json(cid: str) -> str:
+    return json.dumps({
+        "lead_grade": "A", "is_valid_lead": True,
+        "lead_summary": "关注同级车型，建议常规跟进",
+        "purchase_stage": "积极对比",
+        "target_brands": ["坦克"], "target_models": ["坦克300"],
+        "core_needs": ["越野"], "main_concerns": ["落地价格"],
+        "purchase_time": "近期", "usage_scenario": "越野出行",
+        "recommended_entry_point": "从当地报价切入",
+        "verification_questions": ["预算多少？"],
+        "evidence_comment_ids": [cid],
+        "analysis_text": PRELIM_ANALYSIS,
+        "confidence": 0.9}, ensure_ascii=False)
+
+
+REVIEW_UPGRADED_JSON = json.dumps({
+    "review_action": "upgraded", "reviewed_grade": "H",
+    "review_reason": "多条评论跨时间印证持续购车关注，初步评级偏保守",
+    "revised_conclusion": NEW_BODY,
+    "revised_lead_summary": "持续关注同级车型并多次表达换车意愿，建议优先联系。",
+    "confidence": 0.9}, ensure_ascii=False)
+
+
+async def test_upgrade_revises_narrative_and_keeps_first_four_sections(session):
+    """复核上调后：等级、第五段、速读结论三者一致，前四段逐字保留。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)),
+                   REVIEW_UPGRADED_JSON)
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "H"
+    assert res["pre_review_grade"] == "A"
+    assert res["review_action"] == "upgraded"
+    assert res["analysis_revision"] == "replaced"
+    assert res["analysis_text"].startswith(FOUR)          # 前四段未动
+    assert "综合判定为 A 级线索" not in res["analysis_text"]  # 旧结论已消失
+    assert res["analysis_text"].endswith(NEW_BODY)
+    assert res["lead_summary"] == "持续关注同级车型并多次表达换车意愿，建议优先联系。"
+
+
+async def test_confirmed_leaves_narrative_untouched(session):
+    """复核确认时不动任何文本，也不产生修订痕迹。"""
+    from tests.test_user_analysis import REVIEW_CONFIRMED_JSON
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)),
+                   REVIEW_CONFIRMED_JSON)
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "A"
+    assert res["review_action"] == "confirmed"
+    assert res["analysis_revision"] == "none"
+    assert res["analysis_text"] == PRELIM_ANALYSIS
+    assert res["lead_summary"] == "关注同级车型，建议常规跟进"
+
+
+async def test_downgrade_also_revises_narrative(session):
+    """降级与升级对称——文本论证 A、最终判 B 同样是矛盾。"""
+    _, u1, _, c1, _ = _setup(session)
+    down_body = "评论多为泛化的产品兴趣，缺乏明确购车表述，建议低优先级跟进。"
+    review = json.dumps({
+        "review_action": "downgraded", "reviewed_grade": "B",
+        "review_reason": "初步评级偏激进，证据不足以支撑高价值判断",
+        "revised_conclusion": down_body,
+        "revised_lead_summary": "产品兴趣为主，暂无明确购车信号，建议低优先级跟进。",
+        "confidence": 0.85}, ensure_ascii=False)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)), review)
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "B"
+    assert res["analysis_revision"] == "replaced"
+    assert res["analysis_text"].endswith(down_body)
+
+
+async def test_review_failure_keeps_grade_and_narrative_together(session):
+    """fail-open 原子性：复核调用失败时等级与文本双双保持初步值。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)))  # 无复核响应
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "A"              # 等级未改
+    assert res["analysis_text"] == PRELIM_ANALYSIS  # 文本未改
+    assert res["analysis_revision"] == "none"
+    assert res["pre_review_grade"] is None       # 复核根本没跑完
+
+
+async def test_filtered_user_skips_review_entirely(session):
+    """被前置过滤的用户不进复核，合成 C 级结果不带修订痕迹。"""
+    from tests.test_user_filter import FILTERED_JSON
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(FILTERED_JSON)   # 只有过滤一跳
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "C"
+    assert res["analysis_revision"] == "none"
+    assert res["pre_review_grade"] is None
