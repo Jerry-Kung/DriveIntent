@@ -593,3 +593,27 @@ def test_v163_analysis_config_uses_v163():
     assert config.prompt_file == "user_lead_analysis_v1.6.3.txt"
     assert config.prompt_version == "v1.6.3"
     assert config.version == "1.6.3"
+
+def test_v163_review_result_revision_fields_default_none():
+    """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""
+    from app.schemas.skills import UserLeadReviewResult
+    r = UserLeadReviewResult()
+    assert r.review_action == "confirmed"
+    assert r.revised_conclusion is None
+    assert r.revised_lead_summary is None
+    r2 = UserLeadReviewResult(
+        review_action="upgraded", reviewed_grade="H",
+        review_reason="多条评论跨时间印证持续购车关注",
+        revised_conclusion="该用户在多个视频下反复讨论换车需求，值得最高优先级跟进。",
+        revised_lead_summary="持续关注同级车型并多次表达换车意愿，建议优先联系。")
+    assert r2.revised_conclusion.startswith("该用户")
+    assert r2.revised_lead_summary.endswith("建议优先联系。")
+
+
+def test_v163_user_lead_result_analysis_revision_default():
+    """V1.6.3：analysis_revision 审计字段暴露锚点命中率。"""
+    from app.schemas.skills import UserLeadResult
+    r = UserLeadResult(lead_grade="B")
+    assert r.analysis_revision == "none"
+    r2 = UserLeadResult(lead_grade="H", analysis_revision="replaced")
+    assert r2.analysis_revision == "replaced"
