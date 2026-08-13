@@ -23,6 +23,17 @@ ANALYSIS = FOUR + CONCLUSION_ANCHOR + "\n综合判定为 A 级线索，建议常
 NEW_BODY = "多条评论跨时间印证持续购车关注，判定为 H 级线索，建议最高优先级跟进。"
 
 
+def _polish_echo(text: str) -> str:
+    """润色响应：原样回显 analysis_text，summary 留空表示保留原值。
+
+    集成测试的关注点是复核修订本身，回显可让既有断言原样成立。
+    """
+    return json.dumps({"polished_analysis_text": text,
+                       "polished_lead_summary": "",
+                       "polished_profile_summary": "",
+                       "confidence": 0.9}, ensure_ascii=False)
+
+
 def test_replace_keeps_first_four_sections_byte_identical():
     """核心承诺：锚点命中时前四段逐字节保留，只有第五段被换掉。"""
     new, revision = _revise_analysis(ANALYSIS, NEW_BODY)
@@ -106,7 +117,8 @@ async def test_upgrade_revises_narrative_and_keeps_first_four_sections(session):
     _, u1, _, c1, _ = _setup(session)
     provider = MockProvider()
     provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)),
-                   REVIEW_UPGRADED_JSON)
+                   REVIEW_UPGRADED_JSON,
+                   _polish_echo(FOUR + CONCLUSION_ANCHOR + "\n" + NEW_BODY))
     await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
 
     res = session.query(AnalysisResult).filter_by(
@@ -119,6 +131,7 @@ async def test_upgrade_revises_narrative_and_keeps_first_four_sections(session):
     assert "综合判定为 A 级线索" not in res["analysis_text"]  # 旧结论已消失
     assert res["analysis_text"].endswith(NEW_BODY)
     assert res["lead_summary"] == "持续关注同级车型并多次表达换车意愿，建议优先联系。"
+    assert res["analysis_polish"] == "polished"
 
 
 async def test_confirmed_leaves_narrative_untouched(session):
@@ -127,7 +140,7 @@ async def test_confirmed_leaves_narrative_untouched(session):
     _, u1, _, c1, _ = _setup(session)
     provider = MockProvider()
     provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)),
-                   REVIEW_CONFIRMED_JSON)
+                   REVIEW_CONFIRMED_JSON, _polish_echo(PRELIM_ANALYSIS))
     await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
 
     res = session.query(AnalysisResult).filter_by(
@@ -137,6 +150,7 @@ async def test_confirmed_leaves_narrative_untouched(session):
     assert res["analysis_revision"] == "none"
     assert res["analysis_text"] == PRELIM_ANALYSIS
     assert res["lead_summary"] == "关注同级车型，建议常规跟进"
+    assert res["analysis_polish"] == "polished"
 
 
 async def test_downgrade_also_revises_narrative(session):
@@ -150,7 +164,8 @@ async def test_downgrade_also_revises_narrative(session):
         "revised_lead_summary": "产品兴趣为主，暂无明确购车信号，建议低优先级跟进。",
         "confidence": 0.85}, ensure_ascii=False)
     provider = MockProvider()
-    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)), review)
+    provider.queue(NOT_FILTERED_JSON, _lead_json(str(c1.id)), review,
+                   _polish_echo(FOUR + CONCLUSION_ANCHOR + "\n" + down_body))
     await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
 
     res = session.query(AnalysisResult).filter_by(
@@ -173,6 +188,7 @@ async def test_review_failure_keeps_grade_and_narrative_together(session):
     assert res["analysis_text"] == PRELIM_ANALYSIS  # 文本未改
     assert res["analysis_revision"] == "none"
     assert res["pre_review_grade"] is None       # 复核根本没跑完
+    assert res["analysis_polish"] == "failed"    # 润色也失败，原文保留
 
 
 async def test_filtered_user_skips_review_entirely(session):
@@ -188,3 +204,4 @@ async def test_filtered_user_skips_review_entirely(session):
     assert res["lead_grade"] == "C"
     assert res["analysis_revision"] == "none"
     assert res["pre_review_grade"] is None
+    assert res["analysis_polish"] == "none"

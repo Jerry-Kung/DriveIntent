@@ -10,8 +10,9 @@ from app.main import app
 from app.skills.executor import SkillExecutor
 from app.web.routes import get_db
 from app.workflow.worker import Worker
+from tests.test_analysis_polish import POLISH_OK_JSON
 from tests.test_comment_screening import _item
-from tests.test_user_analysis import LEAD_JSON
+from tests.test_user_analysis import LEAD_JSON, REVIEW_CONFIRMED_JSON
 from tests.test_user_filter import NOT_FILTERED_JSON
 
 
@@ -56,7 +57,8 @@ async def test_e2e_pipeline(tmp_path, session):
                               _item(ids["9002"], purchase=False)]},
                    ensure_ascii=False),
         NOT_FILTERED_JSON,
-        LEAD_JSON.replace("__CID__", str(ids["9001"])))
+        LEAD_JSON.replace("__CID__", str(ids["9001"])),
+        REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
     worker = Worker(lambda: session, SkillExecutor(LLMGateway(provider)))
     while await worker.run_once():
         pass

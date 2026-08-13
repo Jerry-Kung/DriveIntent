@@ -8,6 +8,7 @@ from app.models import AnalysisResult, Comment, Video
 from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
                                 VideoContextResult)
 from app.services.results import get_current_result, save_result
+from app.skills.analysis_polish import apply_polish
 from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
@@ -22,7 +23,7 @@ USER_ANALYSIS_SKILL = "user_lead_analysis"
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
     COMMENT_SCREENING_SKILL: "1.3",
-    USER_ANALYSIS_SKILL: "1.6.3",
+    USER_ANALYSIS_SKILL: "1.6.4",
     USER_REVIEW_SKILL: "1.6.3",
 }
 
@@ -141,6 +142,8 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
         # V1.6.2 复核 + V1.6.3 叙述修订（fail-open；被过滤用户跳过）
         await apply_review(executor, context["user_evidence_json"],
                            context["our_models_summary"], out)
+        # V1.6.4：复核后统一润色对外叙述（fail-open，只改文本不改级）
+        await apply_polish(executor, out)
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,

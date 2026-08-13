@@ -14,6 +14,7 @@ from app.skills.executor import SkillExecutor
 from app.workflow.pipeline import (run_user_analysis, run_video_context,
                                    screen_comment_batch)
 from tests.test_aggregation import _setup as _agg_setup
+from tests.test_analysis_polish import POLISH_OK_JSON
 from tests.test_comment_screening import _item
 from tests.test_comment_screening import _setup as _screening_setup
 from tests.test_user_analysis import LEAD_JSON
@@ -71,9 +72,9 @@ async def test_run_user_analysis_releases_connection_during_llm(session):
     _, u1, _, c1, _ = _agg_setup(session)
     spy = _spy(session, NOT_FILTERED_JSON,
                LEAD_JSON.replace("__CID__", str(c1.id)),
-               REVIEW_CONFIRMED_JSON)
+               REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
 
     await run_user_analysis(session, spy, u1.id)
 
-    # 过滤、定级、复核三跳均不持有事务
-    assert spy.in_txn_at_call == [False, False, False]
+    # 过滤、定级、复核、润色四跳均不持有事务
+    assert spy.in_txn_at_call == [False, False, False, False]
