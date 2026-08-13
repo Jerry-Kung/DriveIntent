@@ -10,8 +10,8 @@ from app.llm.gateway import LLMGateway
 from app.llm.mock import MockProvider
 from app.models import AnalysisResult
 from app.skills.executor import SkillExecutor
-from app.workflow.pipeline import (CONCLUSION_ANCHOR, _revise_analysis,
-                                   run_user_analysis)
+from app.skills.user_review import CONCLUSION_ANCHOR, _revise_analysis
+from app.workflow.pipeline import run_user_analysis
 from tests.test_aggregation import _setup
 from tests.test_user_filter import NOT_FILTERED_JSON
 

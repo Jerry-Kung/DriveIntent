@@ -9,8 +9,9 @@ from app.matching.loader import build_our_models_summary, load_our_models
 from app.schemas.skills import UserLeadResult
 from app.skills.executor import extract_json, load_skill_config, render_prompt
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
+from app.skills.user_review import GRADING_STANDARD
 from app.skills.vision import build_image_message
-from app.workflow.pipeline import GRADING_STANDARD, USER_ANALYSIS_SKILL
+from app.workflow.pipeline import USER_ANALYSIS_SKILL
 
 logger = logging.getLogger(__name__)
 

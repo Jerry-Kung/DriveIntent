@@ -6,11 +6,13 @@ from app.config import settings
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.models import AnalysisResult, Comment, Video
 from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
-                                UserLeadReviewResult, VideoContextResult)
+                                VideoContextResult)
 from app.services.results import get_current_result, save_result
-from app.skills.executor import (PROMPT_DIR, SkillExecutionError,
-                                 SkillExecutor, load_skill_config)
+from app.skills.executor import (SkillExecutionError, SkillExecutor,
+                                 load_skill_config)
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
+from app.skills.user_review import (GRADING_STANDARD, USER_REVIEW_SKILL,
+                                    apply_review)
 from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
@@ -116,39 +118,6 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
     await screen_comment_batch(session, executor, video_id, resolved_ids[mid:])
 
 
-GRADING_STANDARD = (PROMPT_DIR / "grading_standard.txt").read_text(
-    encoding="utf-8").strip()
-
-
-# V1.6.3：analysis_text 第五段的定位锚点，须与定级 Prompt
-# （user_lead_analysis_v1.6.3.txt）中的第五个段标题逐字一致。
-CONCLUSION_ANCHOR = "五、总体评价"
-
-
-def _revise_analysis(analysis_text: str,
-                     revised_conclusion: str | None) -> tuple[str, str]:
-    """用复核给出的新结论替换 analysis_text 的第五段"总体评价"。
-
-    返回 (新 analysis_text, analysis_revision)。纯函数，不抛异常。
-    前四段是与等级无关的事实陈述，必须逐字保留——把"原样照抄"交给模型
-    做不可靠，只有代码切分能兑现这一点。锚点缺失时退化为文末追加，
-    宁可效果打折也绝不失败。
-    """
-    body = (revised_conclusion or "").strip()
-    if not body:
-        return analysis_text, "none"
-    # 模型可能不听话地把段标题也写进正文，剥掉避免重复标题
-    if body.startswith(CONCLUSION_ANCHOR):
-        body = body[len(CONCLUSION_ANCHOR):].lstrip("：: \t\n")
-    text = analysis_text or ""
-    # 总体评价是末段：用最后一次出现，避开前文对该标题的引用
-    idx = text.rfind(CONCLUSION_ANCHOR)
-    if idx >= 0:
-        return f"{text[:idx]}{CONCLUSION_ANCHOR}\n{body}", "replaced"
-    sep = "\n\n" if text else ""
-    return f"{text}{sep}{CONCLUSION_ANCHOR}（复核修订）\n{body}", "appended"
-
-
 async def run_user_analysis(session: Session, executor: SkillExecutor,
                             user_id: int) -> None:
     from app.services.aggregation import build_user_evidence
@@ -170,35 +139,9 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     else:
         out = await executor.run(
             USER_ANALYSIS_SKILL, context, UserLeadResult)
-        # V1.6.2: independent review node (fail-open — any exception keeps
-        # the preliminary grade; filtered results skip review entirely).
-        try:
-            review_context = {
-                "user_evidence_json": context["user_evidence_json"],
-                "grading_standard": GRADING_STANDARD,
-                "our_models_summary": context["our_models_summary"],
-                "preliminary_result_json": json.dumps(
-                    out.model_dump(), ensure_ascii=False),
-            }
-            review: UserLeadReviewResult = await executor.run(
-                USER_REVIEW_SKILL, review_context, UserLeadReviewResult)
-            out.pre_review_grade = out.lead_grade
-            out.review_action = review.review_action
-            out.review_reason = review.review_reason
-            if review.review_action != "confirmed":
-                # V1.6.3：等级与对外叙述必须同进同退。先全部算完再一次性
-                # 赋值，杜绝"等级已改、文本仍在论证旧等级"的中间态——那
-                # 正是本版要消灭的矛盾。
-                new_text, revision = _revise_analysis(
-                    out.analysis_text, review.revised_conclusion)
-                new_summary = (review.revised_lead_summary or "").strip()
-                out.analysis_text = new_text
-                out.analysis_revision = revision
-                if new_summary:
-                    out.lead_summary = new_summary
-                out.lead_grade = review.reviewed_grade  # type: ignore[assignment]
-        except Exception:
-            pass  # fail-open: keep preliminary lead_grade and narrative
+        # V1.6.2 复核 + V1.6.3 叙述修订（fail-open；被过滤用户跳过）
+        await apply_review(executor, context["user_evidence_json"],
+                           context["our_models_summary"], out)
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,
