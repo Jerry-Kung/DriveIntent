@@ -93,7 +93,8 @@ class UserLeadResult(BaseModel):
     # audit chain: baseline_grade ->(match_adjustment)-> mid_grade1
     #              ->(profile_adjustment)-> pre_review_grade
     #              ->(review_action)-> lead_grade
-    #              ->(analysis_revision)-> 对外叙述文本（V1.6.3）
+    #              ->(analysis_revision)-> 锚点修订后叙述（V1.6.3）
+    #              ->(analysis_polish)-> 对外叙述文本（V1.6.4）
     pre_review_grade: str | None = None   # preliminary grade before review
     review_action: str = "confirmed"      # confirmed | upgraded | downgraded
     review_reason: str | None = None
@@ -102,6 +103,11 @@ class UserLeadResult(BaseModel):
     # appended=锚点缺失，退化为文末追加。appended 占比偏高说明定级模型
     # 未稳定输出段标题，格式约束需加强。
     analysis_revision: str = "none"       # none | replaced | appended
+    # V1.6.4：润色节点审计字段。none=未走润色（被过滤账号）；
+    # polished=已应用（含 summary 单字段为空、部分应用）；
+    # failed=调用失败或输出非法（为空/缺段标题），保留原文。
+    # failed 占比偏高说明润色 Prompt 输出格式不稳，需加强约束。
+    analysis_polish: str = "none"         # none | polished | failed
     # V1.6：无效用户过滤审计字段（内部用，不进对外 API 契约）。
     # 被前置过滤节点命中时写入；未过滤（走完整定级流水线）为 None。
     filter_category: str | None = None
@@ -126,6 +132,18 @@ class UserLeadReviewResult(BaseModel):
     # revised_conclusion 为“总体评价”正文，不含段标题（标题由代码补齐）。
     revised_conclusion: str | None = None
     revised_lead_summary: str | None = None
+    confidence: float = 0.0
+
+
+class AnalysisPolishResult(BaseModel):
+    """V1.6.4 润色节点输出。
+
+    对定级+复核后的三个对外叙述字段做一次专门润色。调用方校验
+    polished_analysis_text 非空且五段标题齐全后才应用（fail-open）。
+    """
+    polished_analysis_text: str = ""
+    polished_lead_summary: str = ""
+    polished_profile_summary: str = ""
     confidence: float = 0.0
 
 
