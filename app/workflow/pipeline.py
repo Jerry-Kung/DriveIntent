@@ -18,7 +18,6 @@ from app.workflow.tasks import create_task
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
 COMMENT_SCREENING_SKILL = "comment_lead_screening"
 USER_ANALYSIS_SKILL = "user_lead_analysis"
-USER_REVIEW_SKILL = "user_lead_review"
 
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
