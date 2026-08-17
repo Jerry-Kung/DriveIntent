@@ -28,7 +28,7 @@ def test_api_keys_list_empty():
 
 def test_api_worker_defaults():
     from app.config import Settings
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.api_worker_enabled is True
     assert s.api_worker_concurrency == 3
 
