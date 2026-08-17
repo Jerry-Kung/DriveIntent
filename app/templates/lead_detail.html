@@ -1,115 +1,103 @@
 {% extends "base.html" %}
-{% block title %}DriveIntent - 线索详情{% endblock %}
+{% block title %}DriveIntent - 结果详情{% endblock %}
 {% block main_class %}narrow{% endblock %}
-
-{% set status_names = {"unreviewed": "未审核", "valid": "有效",
-                       "invalid": "无效"} %}
 
 {% block content %}
   <p class="crumb"><a href="/leads">← 返回列表</a></p>
-  <h1 class="lead-title">{{ lead.nickname }}
-    <span class="grade grade-{{ lead.grade }}">{{ lead.grade }}</span>
+  <h1 class="lead-title">
+    <span class="grade grade-{{ grade }}">{{ grade }}</span>
+    <span class="hint">{{ acct.account_uid or "-" }}</span>
   </h1>
 
   <section class="card">
-    <h2>意向画像</h2>
-    <p class="summary">{{ lead.summary }}</p>
+    <h2>作业信息</h2>
     <dl class="facts">
-      <div><dt>购车阶段</dt><dd>{{ lead.purchase_stage or "未知" }}</dd></div>
-      <div><dt>购车时间</dt><dd>{{ lead.purchase_time or "未知" }}</dd></div>
-      <div><dt>置信度</dt><dd class="num">{{ "%.2f" | format(lead.confidence or 0) }}</dd></div>
-      <div><dt>品牌车型</dt><dd>{{ lead.target_brands | join("/") }}
-        {{ lead.target_models | join("/") }}</dd></div>
-      <div><dt>核心需求</dt><dd>{{ lead.core_needs | join("、") }}</dd></div>
-      <div><dt>主要顾虑</dt><dd>{{ lead.main_concerns | join("、") }}</dd></div>
-      <div><dt>使用场景</dt><dd>{{ lead.usage_scenario or "未知" }}</dd></div>
+      <div><dt>作业 ID</dt><dd class="mono">{{ job_id }}</dd></div>
+      <div><dt>状态</dt><dd>{{ status }}</dd></div>
+      <div><dt>接收时间</dt><dd>{{ created_at }}</dd></div>
+      <div><dt>完成时间</dt><dd>{{ finished_at }}</dd></div>
+      <div><dt>进度</dt><dd>{{ progress_done }}/{{ progress_total }}</dd></div>
     </dl>
-    <div class="callout">
-      <p><b>销售切入点：</b>{{ lead.entry_point or "-" }}</p>
-      <p><b>待确认问题：</b>{{ lead.verification_questions | join("；") }}</p>
-    </div>
   </section>
 
   <section class="card">
-    <h2>证据评论 <span class="hint">{{ pack.comments | length }} 条有效</span></h2>
-    {% for c in pack.comments %}
+    <h2>输入（账号信息）</h2>
+    <dl class="facts">
+      <div><dt>昵称</dt><dd>{{ input.account_name or "-" }}</dd></div>
+      <div><dt>抖音号</dt><dd>{{ input.account_douyin_id or "-" }}</dd></div>
+    </dl>
+    {% if input.comment_history %}
+    <h3>评论历史 <span class="hint">{{ input.comment_history | length }} 条</span></h3>
+    {% for c in input.comment_history %}
     <div class="comment">
-      <div>{{ c.content }}</div>
-      <div class="meta">
-        {{ c.comment_time or "" }}｜意向强度 {{ c.screening.intent_strength }}｜
-        {{ c.screening.reason }}
-        {% if c.video_context %}
-        ｜视频：{{ c.video_context.brand or "" }} {{ c.video_context.model or "" }}
-        {% endif %}
-      </div>
+      <div>{{ c.comment_content }}</div>
+      <div class="meta">{{ c.comment_time or "" }}｜{{ c.video_title or "" }}</div>
     </div>
     {% endfor %}
+    {% endif %}
+    {% if input.homepage_vision_text %}
+    <h3>主页截图识别文本</h3>
+    <pre class="pre">{{ input.homepage_vision_text }}</pre>
+    {% endif %}
   </section>
 
   <section class="card">
-    <h2>人工审核</h2>
-    <p>当前：<span class="pill pill-{{ lead.review_status }}">{{ status_names.get(lead.review_status, lead.review_status) }}</span>
-       {{ lead.review_tags | join("、") }} {{ lead.review_note or "" }}</p>
-    <div class="review-row">
-      <select id="rs">
-        <option value="valid">有效</option>
-        <option value="invalid">无效</option>
-      </select>
-      {% for t in ["等级偏高", "等级偏低", "疑似水军", "无真实购车需求",
-                   "画像错误", "切入点无价值"] %}
-      <label class="tag-pill"><input type="checkbox" class="tag"
-        value="{{ t }}">{{ t }}</label>
-      {% endfor %}
+    <h2>输出（精筛结果）</h2>
+    <dl class="facts">
+      <div><dt>意向等级</dt><dd>{{ acct.intent_level or "-" }}</dd></div>
+      <div><dt>等级代码</dt><dd>{{ acct.intent_level_code or "-" }}</dd></div>
+      <div><dt>价值分</dt><dd>{{ acct.value_score if acct.value_score is not none else "-" }}</dd></div>
+      <div><dt>是否车主</dt><dd>{{ acct.is_car_owner }}</dd></div>
+      <div><dt>购车意向</dt><dd>{{ acct.has_purchase_intent }}</dd></div>
+      <div><dt>处理时间</dt><dd>{{ acct.processed_at or "-" }}</dd></div>
+    </dl>
+    <h3>画像标签</h3>
+    <p>{{ acct.profile_tags | join("、") }}</p>
+    <h3>画像摘要</h3>
+    <p class="summary">{{ acct.profile_summary or "-" }}</p>
+    <h3>分析过程</h3>
+    <pre class="pre">{{ acct.analysis or "-" }}</pre>
+    {% if acct.error %}
+    <p class="bad-text">处理错误：{{ acct.error }}</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>LLM 调用明细 <span class="hint">（作业级近似，无法精确到单个账号）</span></h2>
+    {% if calls %}
+    <div class="table-wrap">
+      <table>
+        <tr><th>时间</th><th>Skill</th><th>版本</th><th>Prompt</th>
+            <th>模型</th><th>输入</th><th>输出</th><th>耗时</th></tr>
+        {% for c in calls %}
+        <tr>
+          <td class="num">{{ c.created_at }}</td>
+          <td>{{ c.skill_id }}</td>
+          <td>{{ c.skill_version }}</td>
+          <td>{{ c.prompt_version }}</td>
+          <td>{{ c.model_name }}</td>
+          <td class="num">{{ c.prompt_tokens }}</td>
+          <td class="num">{{ c.completion_tokens }}</td>
+          <td class="num">{{ c.duration_ms }}</td>
+        </tr>
+        {% endfor %}
+      </table>
     </div>
-    <textarea id="note" rows="2" placeholder="备注"></textarea>
-    <div class="review-row">
-      <button class="primary" onclick="submitReview()">提交审核</button>
-      <span class="hint" id="review-result"></span>
-    </div>
+    {% else %}
+    <div class="empty">该作业时段内无 LLM 调用记录</div>
+    {% endif %}
   </section>
 {% endblock %}
 
 {% block extra_style %}
     .crumb { margin: 0 0 10px; }
-    .lead-title { display: flex; align-items: center; gap: 12px;
-                  font-size: 24px; margin: 0 0 18px; }
-    .summary { margin-top: 0; }
-    .facts { display: grid; grid-template-columns: repeat(auto-fill,
-             minmax(240px, 1fr)); gap: 6px 24px; margin: 0 0 14px; }
+    .lead-title { display: flex; align-items: center; gap: 12px; font-size: 22px; margin: 0 0 18px; }
+    .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 24px; margin: 0 0 14px; }
     .facts dt { color: var(--muted); font-size: 13px; }
     .facts dd { margin: 0 0 6px; }
-    .callout { background: #f2f6fc; border: 1px solid #d4e0f2;
-               border-left: 4px solid var(--plate); border-radius: 8px;
-               padding: 4px 14px; }
-    .callout p { margin: 8px 0; }
-    .comment { border-left: 3px solid var(--plate); padding: 2px 0 2px 12px;
-               margin: 12px 0; }
+    .mono { font-family: monospace; font-size: 13px; overflow-wrap: anywhere; }
+    .comment { border-left: 3px solid var(--plate); padding: 2px 0 2px 12px; margin: 10px 0; }
     .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
-    .review-row { display: flex; align-items: center; gap: 10px;
-                  flex-wrap: wrap; margin: 10px 0; }
-    .tag-pill { display: inline-flex; align-items: center; gap: 5px;
-                border: 1px solid var(--line); border-radius: 999px;
-                padding: 3px 12px; font-size: 13.5px; cursor: pointer;
-                user-select: none; }
-    .tag-pill:has(:checked) { border-color: var(--plate);
-                              color: var(--plate); background: #f2f6fc; }
-    textarea { width: 100%; max-width: 560px; display: block; }
-{% endblock %}
-
-{% block script %}
-<script>
-async function submitReview() {
-  const tags = [...document.querySelectorAll('.tag:checked')]
-      .map(x => x.value);
-  const r = await fetch('/api/leads/{{ lead.id }}/review', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      review_status: document.getElementById('rs').value,
-      review_tags: tags,
-      review_note: document.getElementById('note').value})});
-  const el = document.getElementById('review-result');
-  el.className = r.ok ? 'hint ok-text' : 'hint bad-text';
-  el.textContent = r.ok ? '已保存' : '保存失败';
-}
-</script>
+    .pre { white-space: pre-wrap; word-break: break-word; background: #f7f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13.5px; }
+    .summary { margin-top: 0; }
 {% endblock %}
