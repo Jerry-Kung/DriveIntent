@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "mock-model"       # 文本模型
     llm_multimodal_model: str = ""      # 多模态模型；留空回退文本模型
+    llm_model_advanced: str = ""        # 高级模型；留空回退 llm_model
     llm_timeout_seconds: int = 120
     llm_max_retries: int = 3
     # 深度思考开关（全局）；对 openai_compat 请求注入 enable_thinking

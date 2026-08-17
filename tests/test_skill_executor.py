@@ -63,6 +63,31 @@ async def test_executor_passes_multimodal_to_gateway(tmp_path, monkeypatch):
     assert captured["multimodal"] is True
 
 
+async def test_executor_passes_advanced_to_gateway(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"; prompt_dir = tmp_path / "prompts"
+    cfg_dir.mkdir(); prompt_dir.mkdir()
+    (cfg_dir / "demo.yaml").write_text(
+        'skill_id: demo\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  advanced: true\nprompt_file: demo_v1.txt\n'
+        'prompt_version: "v1"\n', encoding="utf-8")
+    (prompt_dir / "demo_v1.txt").write_text("$q", encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(ex, "PROMPT_DIR", prompt_dir)
+
+    captured = {}
+
+    class Gw:
+        async def chat(self, messages, **kwargs):
+            captured.update(kwargs)
+            from app.llm.base import LLMResponse
+            return LLMResponse(text='{"answer": "好"}')
+
+    executor = SkillExecutor(Gw(), max_retries=1)
+    await executor.run("demo", {"q": "hi"}, Out)
+    assert captured["advanced"] is True
+
+
 def test_render_prompt_keeps_json_braces():
     cfg = SkillConfig(skill_id="t", version="1.0", prompt_file="x.txt",
                       prompt_version="v1")
@@ -128,7 +153,8 @@ async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
     calls = {"n": 0}
 
     class AlwaysFailProvider(MockProvider):
-        async def chat(self, messages, *, model, temperature):
+        async def chat(self, messages, *, model, temperature,
+                       enable_thinking=False):
             calls["n"] += 1
             raise LLMError("boom")
 

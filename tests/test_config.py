@@ -49,3 +49,8 @@ def test_multimodal_model_explicit_takes_precedence():
 def test_enable_thinking_defaults_false():
     s = Settings(_env_file=None)
     assert s.llm_enable_thinking is False
+
+
+def test_llm_model_advanced_defaults_empty():
+    s = Settings(_env_file=None)
+    assert s.llm_model_advanced == ""

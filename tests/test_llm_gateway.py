@@ -15,25 +15,31 @@ class FlakyProvider(MockProvider):
         super().__init__()
         self.fail_times = fail_times
 
-    async def chat(self, messages, *, model, temperature):
+    async def chat(self, messages, *, model, temperature,
+                   enable_thinking=False):
         if self.fail_times > 0:
             self.fail_times -= 1
             raise LLMError("boom")
         return await super().chat(messages, model=model,
-                                  temperature=temperature)
+                                  temperature=temperature,
+                                  enable_thinking=enable_thinking)
 
 
 class RecordingProvider(MockProvider):
-    """记录最近一次 chat 收到的 model。"""
+    """记录最近一次 chat 收到的 model 与 enable_thinking。"""
 
     def __init__(self):
         super().__init__()
         self.last_model = None
+        self.last_enable_thinking = None
 
-    async def chat(self, messages, *, model, temperature):
+    async def chat(self, messages, *, model, temperature,
+                   enable_thinking=False):
         self.last_model = model
+        self.last_enable_thinking = enable_thinking
         return await super().chat(messages, model=model,
-                                  temperature=temperature)
+                                  temperature=temperature,
+                                  enable_thinking=enable_thinking)
 
 
 async def test_gateway_returns_text():
@@ -87,6 +93,38 @@ async def test_gateway_explicit_model_ignores_multimodal_flag(monkeypatch):
     await gw.chat([{"role": "user", "content": "hi"}],
                   model="explicit-m", multimodal=True)
     assert provider.last_model == "explicit-m"
+
+
+async def test_gateway_advanced_uses_advanced_model(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_model_advanced", "adv-m")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}], advanced=True)
+    assert provider.last_model == "adv-m"
+
+
+async def test_gateway_advanced_falls_back_to_text_when_unset(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_model", "text-m")
+    monkeypatch.setattr(gwmod.settings, "llm_model_advanced", "")
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}], advanced=True)
+    assert provider.last_model == "text-m"
+
+
+async def test_gateway_advanced_forces_thinking(monkeypatch):
+    import app.llm.gateway as gwmod
+    monkeypatch.setattr(gwmod.settings, "llm_enable_thinking", False)
+    provider = RecordingProvider()
+    provider.queue("ok")
+    gw = LLMGateway(provider)
+    await gw.chat([{"role": "user", "content": "hi"}], advanced=True)
+    assert provider.last_enable_thinking is True
 
 
 async def test_gateway_retries_then_succeeds(session):

@@ -58,16 +58,21 @@ class LLMGateway:
     async def chat(self, messages: list[dict], *, skill_id: str = "",
                    skill_version: str = "", prompt_version: str = "",
                    model: str | None = None, multimodal: bool = False,
+                   advanced: bool = False,
                    temperature: float | None = None) -> LLMResponse:
         if model is None:
-            model = settings.multimodal_model if multimodal else settings.llm_model
+            if advanced:
+                model = settings.llm_model_advanced or settings.llm_model
+            else:
+                model = settings.multimodal_model if multimodal else settings.llm_model
         temperature = 0.1 if temperature is None else temperature
         last_error: Exception | None = None
         for attempt in range(self.max_retries):
             start = time.monotonic()
             try:
                 resp = await self.provider.chat(
-                    messages, model=model, temperature=temperature)
+                    messages, model=model, temperature=temperature,
+                    enable_thinking=advanced or settings.llm_enable_thinking)
                 await self._log(skill_id=skill_id, skill_version=skill_version,
                                 prompt_version=prompt_version, model=model,
                                 messages=messages, resp=resp, error=None,

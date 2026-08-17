@@ -13,12 +13,12 @@ class OpenAICompatProvider(LLMProvider):
         self.transport = transport
 
     async def chat(self, messages: list[dict], *, model: str,
-                   temperature: float) -> LLMResponse:
+                   temperature: float, enable_thinking: bool = False) -> LLMResponse:
         url = f"{self.base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         payload = {"model": model, "messages": messages,
                    "temperature": temperature,
-                   "enable_thinking": settings.llm_enable_thinking}
+                   "enable_thinking": enable_thinking or settings.llm_enable_thinking}
         try:
             async with httpx.AsyncClient(timeout=self.timeout,
                                          transport=self.transport) as client:

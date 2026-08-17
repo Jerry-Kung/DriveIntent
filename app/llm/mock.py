@@ -9,7 +9,7 @@ class MockProvider(LLMProvider):
         self._responses.extend(texts)
 
     async def chat(self, messages: list[dict], *, model: str,
-                   temperature: float) -> LLMResponse:
+                   temperature: float, enable_thinking: bool = False) -> LLMResponse:
         if not self._responses:
             raise LLMError("MockProvider: 无预置响应")
         return LLMResponse(text=self._responses.pop(0))

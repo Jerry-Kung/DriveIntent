@@ -17,5 +17,5 @@ class LLMError(Exception):
 class LLMProvider(abc.ABC):
     @abc.abstractmethod
     async def chat(self, messages: list[dict], *, model: str,
-                   temperature: float) -> LLMResponse:
+                   temperature: float, enable_thinking: bool = False) -> LLMResponse:
         ...
