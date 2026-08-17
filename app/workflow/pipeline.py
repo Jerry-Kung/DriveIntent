@@ -13,7 +13,7 @@ from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
 from app.skills.user_review import (GRADING_STANDARD, USER_REVIEW_SKILL,
-                                    apply_review)
+                                    USER_REVIEW_ADVANCED_SKILL, apply_review)
 from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
@@ -23,8 +23,9 @@ USER_ANALYSIS_SKILL = "user_lead_analysis"
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
     COMMENT_SCREENING_SKILL: "1.3",
-    USER_ANALYSIS_SKILL: "1.6.4",
+    USER_ANALYSIS_SKILL: "1.7.0",
     USER_REVIEW_SKILL: "1.6.3",
+    USER_REVIEW_ADVANCED_SKILL: "1.7.0",
 }
 
 
