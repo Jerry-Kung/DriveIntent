@@ -361,6 +361,14 @@ def test_v162_user_lead_result_audit_defaults():
     assert r2.review_action == "upgraded"
 
 
+def test_v170_user_lead_result_review_tier_default():
+    """V1.7.0：review_tier 审计字段，默认未审查。"""
+    from app.schemas.skills import UserLeadResult
+    assert UserLeadResult(lead_grade="B").review_tier == "none"
+    r = UserLeadResult(lead_grade="H", review_tier="advanced")
+    assert r.review_tier == "advanced"
+
+
 def test_v121_user_analysis_prompt_has_match_rules():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")

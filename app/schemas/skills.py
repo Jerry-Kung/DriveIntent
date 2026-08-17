@@ -98,12 +98,15 @@ class UserLeadResult(BaseModel):
     pre_review_grade: str | None = None   # preliminary grade before review
     review_action: str = "confirmed"      # confirmed | upgraded | downgraded
     review_reason: str | None = None
+    # V1.7.0：审查层级审计字段。none=未审查（被过滤或初始定级 C）；
+    # standard=普通模型审查；advanced=高级模型审查（最终生效层级）。
+    review_tier: str = "none"             # none | standard | advanced
     # V1.6.3：复核改级后对 analysis_text 第五段的修订方式。
     # none=未修订（confirmed 或复核未给正文）；replaced=按锚点替换第五段；
     # appended=锚点缺失，退化为文末追加。appended 占比偏高说明定级模型
     # 未稳定输出段标题，格式约束需加强。
     analysis_revision: str = "none"       # none | replaced | appended
-    # V1.6.4：润色节点审计字段。none=未走润色（被过滤账号）；
+    # V1.6.4：润色节点审计字段。none=未走润色（被过滤账号或最终定级 C）；
     # polished=已应用（含 summary 单字段为空、部分应用）；
     # failed=调用失败或输出非法（为空/缺段标题），保留原文。
     # failed 占比偏高说明润色 Prompt 输出格式不稳，需加强约束。
