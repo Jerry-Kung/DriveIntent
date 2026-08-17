@@ -7,6 +7,7 @@ from app.skills.executor import PROMPT_DIR, SkillExecutionError
 logger = logging.getLogger(__name__)
 
 USER_REVIEW_SKILL = "user_lead_review"
+USER_REVIEW_ADVANCED_SKILL = "user_lead_review_advanced"
 
 GRADING_STANDARD = (PROMPT_DIR / "grading_standard.txt").read_text(
     encoding="utf-8").strip()
@@ -40,13 +41,17 @@ def _revise_analysis(analysis_text: str,
     return f"{text}{sep}{CONCLUSION_ANCHOR}（复核修订）\n{body}", "appended"
 
 
-async def apply_review(executor, evidence_json: str, our_models_summary: str,
-                       out: UserLeadResult) -> None:
-    """V1.6.2 独立复核 + V1.6.3 叙述修订，就地修改 out。
+async def _run_review(executor, evidence_json: str, our_models_summary: str,
+                      out: UserLeadResult, tier: str) -> None:
+    """单次复核核心：调用指定层级的审查 Skill，就地修改 out。
 
-    fail-open：复核调用失败时等级与文本双双保持初步值（原子性）。
-    V1.6.4 起两条路径（V0 流水线 / 对外 API）共用本函数。
+    fail-open：调用失败时等级与文本双双保持当前值（原子性）。
+    tier 为 "standard"（普通模型）或 "advanced"（高级模型），调用前即
+    写入 out.review_tier，保证 fail-open 也留下"尝试过该层"的痕迹。
     """
+    skill_id = (USER_REVIEW_ADVANCED_SKILL if tier == "advanced"
+                else USER_REVIEW_SKILL)
+    out.review_tier = tier
     review_context = {
         "user_evidence_json": evidence_json,
         "grading_standard": GRADING_STANDARD,
@@ -56,9 +61,8 @@ async def apply_review(executor, evidence_json: str, our_models_summary: str,
     }
     try:
         review: UserLeadReviewResult = await executor.run(
-            USER_REVIEW_SKILL, review_context, UserLeadReviewResult)
+            skill_id, review_context, UserLeadReviewResult)
     except SkillExecutionError as e:
-        # V1.6.4：原裸 except pass 会让复核静默失效无从察觉，补日志
         logger.warning("复核节点失败，保留初步定级与叙述: %s", e)
         return
     out.pre_review_grade = out.lead_grade
@@ -75,3 +79,29 @@ async def apply_review(executor, evidence_json: str, our_models_summary: str,
         if new_summary:
             out.lead_summary = new_summary
         out.lead_grade = review.reviewed_grade  # type: ignore[assignment]
+
+
+async def apply_review(executor, evidence_json: str, our_models_summary: str,
+                       out: UserLeadResult) -> None:
+    """V1.7.0 审查分级分流，就地修改 out。
+
+    - 初始 C：无价值，不进审查（review_tier 保持 none）；
+    - 初始 B：普通模型审查（user_lead_review，行为与 V1.6.3 一致）；
+      若普通审查 upgrade 到 A/H，追加一次高级模型终审
+      （user_lead_review_advanced）；
+    - 初始 A/H：直接高级模型审查。
+
+    V1.6.4 起两条路径（V0 流水线 / 对外 API）共用本函数。
+    """
+    grade = out.lead_grade
+    if grade == "C":
+        return
+    if grade == "B":
+        await _run_review(executor, evidence_json, our_models_summary,
+                          out, "standard")
+        if out.lead_grade in ("A", "H"):
+            await _run_review(executor, evidence_json, our_models_summary,
+                              out, "advanced")
+    else:  # A / H
+        await _run_review(executor, evidence_json, our_models_summary,
+                          out, "advanced")

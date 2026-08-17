@@ -20,10 +20,16 @@ _REVIEW_ACTION_ZH = {"confirmed": "维持原级", "upgraded": "上调一级",
 async def apply_polish(executor, out: UserLeadResult) -> None:
     """V1.6.4 润色节点：重写三个对外叙述字段，就地修改 out。
 
+    V1.7.0：最终 lead_grade == "C" 的无价值线索不润色（初始 C 与 B 经
+    审查降级到 C 均短路），省一次 LLM 调用。
+
     fail-open：调用失败、输出为空或缺失段标题时保留原文并记 "failed"。
     只改文本不改级——lead_grade 与结构化字段一律不动。刻意不传用户
     证据包：润色是纯文本改写，给证据包会诱导模型引入新事实。
     """
+    if out.lead_grade == "C":
+        out.analysis_polish = "none"
+        return
     ctx = {
         "lead_grade": out.lead_grade,
         "review_action": _REVIEW_ACTION_ZH.get(out.review_action,

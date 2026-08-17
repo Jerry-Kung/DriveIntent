@@ -104,11 +104,44 @@ def _lead_json(cid: str) -> str:
         "confidence": 0.9}, ensure_ascii=False)
 
 
+def _lead_json_with_grade(cid: str, grade: str) -> str:
+    payload = json.loads(_lead_json(cid))
+    payload["lead_grade"] = grade
+    payload["is_valid_lead"] = grade != "C"
+    return json.dumps(payload, ensure_ascii=False)
+
+
 REVIEW_UPGRADED_JSON = json.dumps({
     "review_action": "upgraded", "reviewed_grade": "H",
     "review_reason": "多条评论跨时间印证持续购车关注，初步评级偏保守",
     "revised_conclusion": NEW_BODY,
     "revised_lead_summary": "持续关注同级车型并多次表达换车意愿，建议优先联系。",
+    "confidence": 0.9}, ensure_ascii=False)
+
+
+# —— V1.7.0 分流场景 ——
+REVIEW_CONFIRMED_B_JSON = json.dumps({
+    "review_action": "confirmed", "reviewed_grade": "B",
+    "review_reason": "初步评级与该用户的实际销售价值一致，予以确认",
+    "confidence": 0.9}, ensure_ascii=False)
+
+REVIEW_UPGRADED_B_TO_A_JSON = json.dumps({
+    "review_action": "upgraded", "reviewed_grade": "A",
+    "review_reason": "评论中已出现明确询价，初步评级偏保守",
+    "revised_conclusion": "存在明确询价与对比行为，判定为 A 级线索，建议优先跟进。",
+    "revised_lead_summary": "存在明确购车意向，建议优先联系。",
+    "confidence": 0.85}, ensure_ascii=False)
+
+REVIEW_DOWNGRADED_B_TO_C_JSON = json.dumps({
+    "review_action": "downgraded", "reviewed_grade": "C",
+    "review_reason": "评论多为泛泛的兴趣表达，无明确购车意向，初步评级偏激进",
+    "revised_conclusion": "未发现明确购车意向，判定为 C 级，不建议跟进。",
+    "revised_lead_summary": "暂无明确购车意向。",
+    "confidence": 0.8}, ensure_ascii=False)
+
+REVIEW_CONFIRMED_A_JSON = json.dumps({
+    "review_action": "confirmed", "reviewed_grade": "A",
+    "review_reason": "高级终审维持普通审查的 A 级判断",
     "confidence": 0.9}, ensure_ascii=False)
 
 
@@ -126,6 +159,7 @@ async def test_upgrade_revises_narrative_and_keeps_first_four_sections(session):
     assert res["lead_grade"] == "H"
     assert res["pre_review_grade"] == "A"
     assert res["review_action"] == "upgraded"
+    assert res["review_tier"] == "advanced"          # 初始 A → 高级审查
     assert res["analysis_revision"] == "replaced"
     assert res["analysis_text"].startswith(FOUR)          # 前四段未动
     assert "综合判定为 A 级线索" not in res["analysis_text"]  # 旧结论已消失
@@ -147,6 +181,7 @@ async def test_confirmed_leaves_narrative_untouched(session):
         target_type="user", target_id=str(u1.id)).one().result
     assert res["lead_grade"] == "A"
     assert res["review_action"] == "confirmed"
+    assert res["review_tier"] == "advanced"          # 初始 A → 高级审查
     assert res["analysis_revision"] == "none"
     assert res["analysis_text"] == PRELIM_ANALYSIS
     assert res["lead_summary"] == "关注同级车型，建议常规跟进"
@@ -171,6 +206,7 @@ async def test_downgrade_also_revises_narrative(session):
     res = session.query(AnalysisResult).filter_by(
         target_type="user", target_id=str(u1.id)).one().result
     assert res["lead_grade"] == "B"
+    assert res["review_tier"] == "advanced"          # 初始 A → 高级审查
     assert res["analysis_revision"] == "replaced"
     assert res["analysis_text"].endswith(down_body)
 
@@ -188,6 +224,7 @@ async def test_review_failure_keeps_grade_and_narrative_together(session):
     assert res["analysis_text"] == PRELIM_ANALYSIS  # 文本未改
     assert res["analysis_revision"] == "none"
     assert res["pre_review_grade"] is None       # 复核根本没跑完
+    assert res["review_tier"] == "advanced"      # 高级审查被尝试但失败
     assert res["analysis_polish"] == "failed"    # 润色也失败，原文保留
 
 
@@ -204,7 +241,72 @@ async def test_filtered_user_skips_review_entirely(session):
     assert res["lead_grade"] == "C"
     assert res["analysis_revision"] == "none"
     assert res["pre_review_grade"] is None
+    assert res["review_tier"] == "none"
     assert res["analysis_polish"] == "none"
+
+
+async def test_initial_c_skips_review_and_polish(session):
+    """初始定级 C：不进审查、不进润色，仅过滤+定级两跳。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json_with_grade(str(c1.id), "C"))
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "C"
+    assert res["review_tier"] == "none"
+    assert res["pre_review_grade"] is None
+    assert res["analysis_polish"] == "none"
+    assert provider._responses == []      # 无多余 LLM 调用
+
+
+async def test_initial_b_confirmed_standard_review(session):
+    """初始 B + 普通审查 confirmed：走普通审查、照常润色。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json_with_grade(str(c1.id), "B"),
+                   REVIEW_CONFIRMED_B_JSON, _polish_echo(PRELIM_ANALYSIS))
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "B"
+    assert res["review_tier"] == "standard"
+    assert res["analysis_polish"] == "polished"
+
+
+async def test_initial_b_upgraded_triggers_advanced_review(session):
+    """初始 B + 普通审查 upgrade 到 A：追加高级终审（confirmed），review_tier 终态 advanced。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json_with_grade(str(c1.id), "B"),
+                   REVIEW_UPGRADED_B_TO_A_JSON, REVIEW_CONFIRMED_A_JSON,
+                   _polish_echo(PRELIM_ANALYSIS))
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "A"
+    assert res["review_tier"] == "advanced"    # 二次高级终审真实走到
+    assert res["analysis_polish"] == "polished"
+
+
+async def test_initial_b_downgraded_to_c_skips_polish(session):
+    """初始 B + 普通审查 downgrade 到 C：走普通审查，最终 C 不润色。"""
+    _, u1, _, c1, _ = _setup(session)
+    provider = MockProvider()
+    provider.queue(NOT_FILTERED_JSON, _lead_json_with_grade(str(c1.id), "B"),
+                   REVIEW_DOWNGRADED_B_TO_C_JSON)
+    await run_user_analysis(session, SkillExecutor(LLMGateway(provider)), u1.id)
+
+    res = session.query(AnalysisResult).filter_by(
+        target_type="user", target_id=str(u1.id)).one().result
+    assert res["lead_grade"] == "C"
+    assert res["review_tier"] == "standard"
+    assert res["analysis_revision"] == "replaced"
+    assert res["analysis_polish"] == "none"    # 最终 C 不润色
+    assert provider._responses == []           # 无润色响应被消费
 
 
 def test_v170_advanced_review_config():
