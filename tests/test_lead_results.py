@@ -103,11 +103,55 @@ def test_detail_data_llm_calls(session):
     _job(session, "j1", t, [_acct("u1")])
     session.add(LlmCallLog(skill_id="user_lead_analysis",
                            skill_version="1.7.0", model_name="m",
+                           job_id="j1", account_uid="u1",
                            created_at=t - timedelta(seconds=1)))
     session.commit()
     from app.services.lead_results import lead_detail_data
     d = lead_detail_data(session, "j1", 0)
     assert [c["skill_id"] for c in d["calls"]] == ["user_lead_analysis"]
+
+
+def test_detail_llm_precise_matching_no_cross_job_leak(session):
+    """V1.7.1：精确匹配：j1 和 j2 时间窗重叠，详情只返回 j1 自己的调用。"""
+    t = datetime(2026, 8, 14, 8, 0, 0)
+    _job(session, "j1", t, [_acct("u1")])
+    _job(session, "j2", t + timedelta(seconds=30), [_acct("u2")])
+    session.add(LlmCallLog(skill_id="s1", job_id="j1", account_uid="u1",
+                           created_at=t))
+    session.add(LlmCallLog(skill_id="s2", job_id="j2", account_uid="u2",
+                           created_at=t + timedelta(seconds=10)))
+    session.commit()
+    from app.services.lead_results import lead_detail_data
+    d = lead_detail_data(session, "j1", 0)
+    assert len(d["calls"]) == 1
+    assert d["calls"][0]["skill_id"] == "s1"
+
+
+def test_detail_llm_no_cross_account_leak(session):
+    """V1.7.1：同作业多账号，详情只展示该账号自身的调用，不串其他账号。"""
+    t = datetime(2026, 8, 14, 8, 0, 0)
+    _job(session, "j1", t, [_acct("u1"), _acct("u2")])
+    session.add(LlmCallLog(skill_id="s1_for_u1", job_id="j1",
+                           account_uid="u1", created_at=t))
+    session.add(LlmCallLog(skill_id="s2_for_u2", job_id="j1",
+                           account_uid="u2", created_at=t))
+    session.commit()
+    from app.services.lead_results import lead_detail_data
+    d = lead_detail_data(session, "j1", 0)
+    assert len(d["calls"]) == 1
+    assert d["calls"][0]["skill_id"] == "s1_for_u1"
+
+
+def test_detail_llm_fallback_when_no_job_id(session):
+    """V1.7.1 回退：旧数据 job_id 为 NULL，回退时间窗近似。"""
+    t = datetime(2026, 8, 14, 8, 0, 0)
+    _job(session, "j1", t, [_acct("u1")])
+    session.add(LlmCallLog(skill_id="s1", job_id=None, account_uid=None,
+                           created_at=t - timedelta(seconds=1)))
+    session.commit()
+    from app.services.lead_results import lead_detail_data
+    d = lead_detail_data(session, "j1", 0)
+    assert [c["skill_id"] for c in d["calls"]] == ["s1"]
 
 
 def test_detail_data_missing(session):

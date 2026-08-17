@@ -58,6 +58,7 @@ def test_detail_page_shows_llm_calls(session):
     _job(session, "j1", t, [_acct("u1")])
     session.add(LlmCallLog(skill_id="user_lead_analysis",
                            skill_version="1.7.0", model_name="m",
+                           job_id="j1", account_uid="u1",
                            created_at=t - timedelta(seconds=1)))
     session.commit()
     client = _client(session)

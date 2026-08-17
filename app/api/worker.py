@@ -9,6 +9,7 @@ from app.api.jobs import (claim_next_job_detached, fail_or_retry_by_id,
                           set_progress_by_id)
 from app.api.schemas import CommentScreeningRequest, ProfileAnalysisRequest
 from app.config import settings
+from app.llm.gateway import _CURRENT_JOB
 
 logger = logging.getLogger(__name__)
 
@@ -81,28 +82,34 @@ class ApiJobWorker:
         vision: dict[str, str] = {}
 
         # 无连接持有：整个 LLM 调用期间不占用连接池
+        # V1.7.1：执行期间写入 job_id 上下文，LLM 日志落库线程据此精确
+        # 归属到本作业（ctxvars 自动随 asyncio.to_thread 复制，见 gateway）。
+        job_token = _CURRENT_JOB.set(job_id)
         try:
-            result = await self._execute(job_id, job["job_type"], payload,
-                                         vision_sink=vision)
-        except Exception as e:
-            logger.exception("API 作业 %s 执行失败", job_id)
-            # 会话2：写失败状态
-            await asyncio.to_thread(
-                fail_or_retry_by_id, self.session_factory, job_id,
-                str(e)[:2000], payload, vision)
-            await asyncio.sleep(self.poll_interval)
-            return True
+            try:
+                result = await self._execute(job_id, job["job_type"], payload,
+                                             vision_sink=vision)
+            except Exception as e:
+                logger.exception("API 作业 %s 执行失败", job_id)
+                # 会话2：写失败状态
+                await asyncio.to_thread(
+                    fail_or_retry_by_id, self.session_factory, job_id,
+                    str(e)[:2000], payload, vision)
+                await asyncio.sleep(self.poll_interval)
+                return True
 
-        # 会话3：写终态。payload 已在内存中，直接传入以免为剥离截图重读大列
-        status = self._status_for(result)
-        if status == "failed":
-            await asyncio.to_thread(
-                fail_or_retry_by_id, self.session_factory, job_id,
-                "全部条目处理失败", payload, vision)
-        else:
-            await asyncio.to_thread(
-                self._finish, job_id, result, status, payload, vision)
-        return True
+            # 会话3：写终态。payload 已在内存中，直接传入以免为剥离截图重读大列
+            status = self._status_for(result)
+            if status == "failed":
+                await asyncio.to_thread(
+                    fail_or_retry_by_id, self.session_factory, job_id,
+                    "全部条目处理失败", payload, vision)
+            else:
+                await asyncio.to_thread(
+                    self._finish, job_id, result, status, payload, vision)
+            return True
+        finally:
+            _CURRENT_JOB.reset(job_token)
 
     def _claim(self) -> dict | None:
         """会话1 的同步体，供 to_thread 调用。

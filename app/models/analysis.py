@@ -51,9 +51,15 @@ class AnalysisResult(Base):
 
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
-    __table_args__ = (Index("ix_llm_call_created", "created_at"),)
+    __table_args__ = (Index("ix_llm_call_created", "created_at"),
+                      Index("ix_llm_call_job", "job_id"))
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # V1.7.1：LLM 日志精确归属。job_id 关联 api_job.id，account_uid 关联
+    # 精筛结果单账号，详情页据此精确到「单账号的几次调用」。历史数据两列
+    # 为 NULL，查询侧回退作业级时间窗近似。
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    account_uid: Mapped[str | None] = mapped_column(String(256))
     skill_id: Mapped[str] = mapped_column(String(64), default="")
     skill_version: Mapped[str] = mapped_column(String(16), default="")
     model_name: Mapped[str] = mapped_column(String(128), default="")

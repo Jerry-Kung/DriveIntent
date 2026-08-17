@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import time
 
@@ -9,6 +10,14 @@ from app.llm.openai_compat import OpenAICompatProvider
 from app.models import LlmCallLog
 
 logger = logging.getLogger(__name__)
+
+# V1.7.1：LLM 日志精确归属。worker 在认领作业后写入这两个 ContextVar，
+# 经 asyncio.to_thread 传播到落库线程，使每条 llm_call_log 都能关联到
+# 作业与账号；详情页据此精确展示业务链路，而非时间窗近似。
+_CURRENT_JOB: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "llm_log_job_id", default=None)
+_CURRENT_ACCOUNT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "llm_log_account_uid", default=None)
 
 
 class LLMGateway:
@@ -26,6 +35,7 @@ class LLMGateway:
         try:
             with self.session_factory() as s:
                 s.add(LlmCallLog(
+                    job_id=_CURRENT_JOB.get(), account_uid=_CURRENT_ACCOUNT.get(),
                     skill_id=skill_id, skill_version=skill_version,
                     prompt_version=prompt_version, model_name=model,
                     input_digest=str(messages)[-2000:],

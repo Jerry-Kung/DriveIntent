@@ -4,7 +4,7 @@ import logging
 from app.api.mapping import map_profile_result, now_iso
 from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
-from app.llm.gateway import LLMGateway
+from app.llm.gateway import LLMGateway, _CURRENT_ACCOUNT
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.schemas.skills import UserLeadResult
 from app.skills.analysis_polish import apply_polish
@@ -91,6 +91,10 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     our_models_summary = build_our_models_summary(load_our_models())
     for idx, account in enumerate(request.accounts):
         has_comments = len(account.comment_history) > 0
+        # V1.7.1：本账号处理期间写入 account_uid 上下文，使 LLM 日志精确
+        # 归属到该账号（识图/过滤/定级/复核/润色全链路）。循环末尾重置，
+        # 防止账号处理抛异常时残留到下一个账号。
+        account_token = _CURRENT_ACCOUNT.set(account.account_uid)
         try:
             if not has_comments:
                 out = UserLeadResult(lead_grade="C", is_valid_lead=False)
@@ -128,6 +132,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "has_purchase_intent": None, "profile_tags": [],
                 "profile_summary": "", "analysis": "", "processed_at": ts,
                 "error": str(e)[:500]})
+        finally:
+            _CURRENT_ACCOUNT.reset(account_token)
         done += 1
         if progress_cb:
             await progress_cb(done)

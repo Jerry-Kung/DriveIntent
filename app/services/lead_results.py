@@ -181,11 +181,21 @@ def lead_detail_data(session: Session, job_id: str, index: int) -> dict | None:
     input_acct = (accounts[index]
                   if index < len(accounts) and isinstance(accounts[index], dict)
                   else {})
-    window_end = job.finished_at or datetime.utcnow()
+
+    # V1.7.1 精确关联：优先按 job_id + account_uid 匹配（V1.7.1 起落库
+    # 写入），详情页只展示该账号自身的 3~5 次调用。历史数据回退时间窗近似。
+    account_uid = acct.get("account_uid")
     calls = (session.query(LlmCallLog)
-             .filter(LlmCallLog.created_at >= job.created_at,
-                     LlmCallLog.created_at <= window_end)
+             .filter(LlmCallLog.job_id == job_id,
+                     LlmCallLog.account_uid == account_uid)
              .order_by(LlmCallLog.created_at).all())
+    if not calls:
+        # 回退：旧日志无 job_id，按作业时间窗近似（多 worker 并发时不可靠）
+        window_end = job.finished_at or datetime.utcnow()
+        calls = (session.query(LlmCallLog)
+                 .filter(LlmCallLog.created_at >= job.created_at,
+                         LlmCallLog.created_at <= window_end)
+                 .order_by(LlmCallLog.created_at).all())
     return {"job_id": job.id, "status": job.status,
             "created_at": _iso_utc8(job.created_at),
             "finished_at": _iso_utc8(job.finished_at),
