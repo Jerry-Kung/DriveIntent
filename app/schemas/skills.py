@@ -1,6 +1,6 @@
 ﻿from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class VideoContextResult(BaseModel):
@@ -18,6 +18,25 @@ class VideoContextResult(BaseModel):
     vehicle_category: str | None = None
     powertrain: str | None = None
     use_case: list[str] = []
+
+    @field_validator("price_range_min", "price_range_max", mode="before")
+    @classmethod
+    def _coerce_price_to_int(cls, v):
+        """LLM 偶尔输出带小数的价格（如 57.99），int 字段会触发
+        int_from_float 校验错误进而使整单作业失败。此处将数值型输入
+        归一为整数；无法判定的输入原样返回交由 Pydantic 报错。"""
+        if v is None or isinstance(v, bool):
+            return v
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return round(v)
+        if isinstance(v, str):
+            try:
+                return round(float(v))
+            except ValueError:
+                return v
+        return v
 
 
 class CommentScreeningItem(BaseModel):

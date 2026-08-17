@@ -57,6 +57,31 @@ def test_video_context_v11_dump_contains_new_fields():
     assert d["vehicle_category"] == "微型车"
 
 
+def test_video_context_v17_price_float_coerced_to_int():
+    from app.schemas.skills import VideoContextResult
+    # 线上真实事故：LLM 输出 57.99 触发 int_from_float 使整单作业失败
+    ctx = VideoContextResult(price_range_min=90000, price_range_max=57.99)
+    assert ctx.price_range_max == 58
+    assert isinstance(ctx.price_range_max, int)
+
+
+def test_video_context_v17_price_numeric_string_coerced_to_int():
+    from app.schemas.skills import VideoContextResult
+    ctx = VideoContextResult(price_range_max="57.99")
+    assert ctx.price_range_max == 58
+    assert isinstance(ctx.price_range_max, int)
+
+
+def test_video_context_v17_price_invalid_string_still_errors():
+    from app.schemas.skills import VideoContextResult
+    from pydantic import ValidationError
+    try:
+        VideoContextResult(price_range_max="not-a-number")
+    except ValidationError:
+        return
+    raise AssertionError("无效价格字符串应仍触发校验错误")
+
+
 def test_user_lead_result_v13_label_fields():
     out = UserLeadResult(lead_grade="A", is_car_owner=True,
                          has_purchase_intent=True)
