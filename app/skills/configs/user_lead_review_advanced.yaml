@@ -1,0 +1,12 @@
+skill_id: user_lead_review_advanced
+version: "1.7.0"
+description: >
+  高价值线索（A/H 级，含 B 级经普通复核上调者）的高级终审：使用更强模型，
+  对上游定级输出与推理链做全面细致的二次核验，避免误判高价值客户。
+  输出与普通复核 user_lead_review 同契约；改级时一并修订对外叙述。
+model:
+  name: ""
+  temperature: 0.1
+  advanced: true
+prompt_file: user_lead_review_advanced_v1.7.0.txt
+prompt_version: "v1.7.0"

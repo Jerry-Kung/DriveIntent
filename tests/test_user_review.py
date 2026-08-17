@@ -205,3 +205,30 @@ async def test_filtered_user_skips_review_entirely(session):
     assert res["analysis_revision"] == "none"
     assert res["pre_review_grade"] is None
     assert res["analysis_polish"] == "none"
+
+
+def test_v170_advanced_review_config():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("user_lead_review_advanced")
+    assert config.version == "1.7.0"
+    assert config.prompt_file == "user_lead_review_advanced_v1.7.0.txt"
+    assert config.prompt_version == "v1.7.0"
+    assert config.advanced is True
+    assert config.multimodal is False
+
+
+def test_v170_advanced_review_prompt_renders():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_review_advanced")
+    text = render_prompt(config, {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元",
+        "preliminary_result_json": "{}"})
+    assert "review_action" in text
+    assert "reviewed_grade" in text
+    assert "revised_conclusion" in text
+    assert "revised_lead_summary" in text
+    assert "不得跨越" in text          # 单次复核不得跨一级
+    assert "C 级不可再降" in text
+    assert "推理" in text              # 全链路细致推导要求
