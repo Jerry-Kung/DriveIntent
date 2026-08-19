@@ -446,58 +446,25 @@ V1.4.4 起 **base64 原始截图不再入库**：`POST /api/v1/profile-analysis`
 - 该目录**不需要备份**：文件仅在作业待处理期间存在，终态即删；丢失只导致该作业降级为无截图。
 - 目录内是普通 JSON（`<job_id>.json`），可直接查看与人工清理。停机期间清空整个 `data/staging` 是安全操作——待处理作业会降级为无截图继续，不会失败。
 
-### 9.2 存量数据清理
+### 9.2 存量数据清理（已完成，历史记录）
 
-升级到 V1.4.4 后，历史 base64 仍留在库中，需手动清理。**升级前提交的 `pending` 作业其 payload 里仍内联着 base64**，V1.4.4 的新逻辑对它们不生效——只有被 Worker 消费到终态，或被显式清空，这部分体积才会释放。
+V1.4.4 升级时的存量 base64 清理（清空升级前的 `pending` 队列、清理终态行 payload 中的截图字段）已在现有环境执行完毕，配套一次性脚本（`clear_pending_queue.py` / `cleanup_api_job_payload.py`）已随清理完成从仓库移除。全新部署自 V1.4.4 起截图不入库，无此问题。
 
-先按业务需要选择存量 `pending` 的处置方式：
+如需再次做类似清理，注意当时确立的安全边界：只动 `pending` 或终态行、不碰 `running`；保留 `result` / `status` / 时间戳 / `progress_*`（`/audit` 统计依赖）；删除后需 `OPTIMIZE TABLE api_job` 才能回收物理空间（会锁表，选业务低峰）。
 
-**方式 A：让 Worker 跑完（保留业务数据）**
-
-确认 Worker 正常运行后等待队列自然排空。注意这批老作业每行 13MB 左右，消费速度受识图与 LLM 吞吐限制，耗时以小时计。
-
-**方式 B：直接清空待处理队列（放弃这批业务数据）**
-
-当积压已过时效、不再需要处理时使用。**该操作删除 `pending` 行，不可恢复**：
-
-```bash
-python scripts/clear_pending_queue.py          # 预演，不写入
-python scripts/clear_pending_queue.py --apply  # 确认后执行
-```
-
-脚本只删 `status='pending'` 的行，`running` 与各终态行一律不触碰（`running` 可能正被 Worker 处理，删除会导致 Worker 落状态时找不到行）。
-
-> 升级实测：该批 `pending` 共 1807 行，其中 `profile_analysis` 652 行占 8240MB。
-
-队列处置完成后，清理历史终态行：
-
-```bash
-python scripts/cleanup_api_job_payload.py          # 预演，不写入
-python scripts/cleanup_api_job_payload.py --apply  # 确认后执行
-```
-
-脚本只清空 `profile_analysis` 终态行（success/partial/failed）payload 中的截图字段，**保留 `result`、`status`、时间戳、`progress_*`**（`/audit` 页面依赖这些列统计），`comment_screening` 的大 payload 是评论正文属业务数据不动。分批提交，默认 dry-run。
-
-最后回收物理空间——**删除与清空都不会自动缩小表文件**，必须执行（**会锁表，选业务低峰**）：
-
-```sql
-OPTIMIZE TABLE api_job;
-```
-
-与补索引脚本同理，Docker 部署时应在宿主机运行这两个脚本，不要用 `docker compose exec app`（`scripts/` 不在镜像内）。
-
-> **两个已知的库侧限制**（排查时会遇到）：`api_job` 单行可达 25MB，任何 `ORDER BY LENGTH(request_payload)` 都会触发 `(1038, Out of sort memory)`，故上述脚本均不排序；此外若数据库账号无 `PROCESS` 权限，`information_schema.innodb_trx` / `processlist` 不可见，属正常现象。
+> **两个已知的库侧限制**（排查时会遇到）：`api_job` 单行可达 25MB，任何 `ORDER BY LENGTH(request_payload)` 都会触发 `(1038, Out of sort memory)`，清理时不要排序；此外若数据库账号无 `PROCESS` 权限，`information_schema.innodb_trx` / `processlist` 不可见，属正常现象。
 
 ---
 
-## 10. 存量库升级：补充索引脚本
+## 10. 存量库升级：DDL 迁移脚本
 
-`create_all` 只为新增表建索引，不会给已存在的表补充新增索引。若在**已有数据库**基础上升级到 V1.4（而非全新部署），需在宿主机手动执行一次审计聚合所需的补索引脚本：
+`create_all` 只建新表，不会给已存在的表补充新增的列或索引。在**已有数据库**基础上跨版本升级时，需在宿主机按版本执行对应迁移脚本（幂等，可重复执行）。**注意**：Docker 部署时 `scripts/` 目录不在镜像内，应在宿主机（有 `.env` 与 Python 环境处）直接运行，不要用 `docker compose exec app` 在容器内执行。
+
+当前需要的迁移脚本：
 
 ```bash
-python scripts/add_audit_indexes.py
+# 升级到 V1.7.1：为 llm_call_log 补 job_id / account_uid 列与索引
+python scripts/add_llm_call_job_columns.py
 ```
 
-该脚本为 `llm_call_log(created_at)` 补 `ix_llm_call_created`、为 `api_job(finished_at)` 补 `ix_api_job_finished`，幂等可重复执行。**注意**：Docker 部署时 `scripts/` 目录不在镜像内，应在宿主机（有 `.env` 与 Python 环境处）直接运行，不要用 `docker compose exec app` 在容器内执行。
-
-全新部署无需执行此脚本，首次启动 `create_all` 会自动建出全部最新索引。
+历史版本的迁移脚本（V1.4 补审计索引等）已在现有环境执行完毕并从仓库移除。全新部署无需执行任何迁移脚本，首次启动 `create_all` 会自动建出全部最新表结构。

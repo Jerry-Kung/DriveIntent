@@ -1773,10 +1773,6 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 打开 http://localhost:8000 ：导入 `data/test_data.xlsx` → 启动分析 →
 在 `/leads` 查看、审核和导出线索。
 
-评测：分析完成后运行 `python scripts/make_annotation_template.py`
-生成标注模板，人工填写后运行
-`python scripts/evaluate.py data/annotation_filled.csv` 查看指标。
-
 清空当前业务数据：
 python scripts/clear_data.py          # 显示各表行数，输入 yes 确认后清空
 python scripts/clear_data.py --yes    # 跳过确认直接清空
