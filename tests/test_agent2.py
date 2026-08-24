@@ -391,7 +391,7 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.0"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.4"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -401,7 +401,7 @@ def test_v170_pipeline_skill_version_bumped():
     from app.workflow.pipeline import (SKILL_VERSIONS, USER_ANALYSIS_SKILL,
                                        USER_REVIEW_ADVANCED_SKILL)
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.0"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.4"
     assert SKILL_VERSIONS[USER_REVIEW_ADVANCED_SKILL] == "1.7.0"
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -612,6 +612,7 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
     # 三阶段流水线：既有规则原样保留
     assert "[阶段一：基线评级]" in text
     assert "[阶段二：车型匹配调整]" in text
+    assert "与用户目标车型最接近" in text   # V1.7.4：阶段二须先选定最接近的对比车型
     assert "[阶段三：主页画像有限上调]" in text
     assert "只能上调" in text
     assert "不得出现英文字段名" in text
@@ -620,9 +621,9 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
 def test_v163_analysis_config_uses_v163():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.6.3.txt"
-    assert config.prompt_version == "v1.6.3"
-    assert config.version == "1.7.0"
+    assert config.prompt_file == "user_lead_analysis_v1.7.4.txt"
+    assert config.prompt_version == "v1.7.4"
+    assert config.version == "1.7.4"
 
 def test_v163_review_result_revision_fields_default_none():
     """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""

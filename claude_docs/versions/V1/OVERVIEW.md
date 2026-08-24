@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-24（随 V1.7.3 发布）
+> 最后更新：2026-08-24（随 V1.7.4 发布）
 
 ## 能力快照
 
@@ -21,7 +21,7 @@
 |---|---|---|
 | comment_lead_screening | 1.7.2 | v1.7.2 |
 | video_context_analysis | 1.1 | v2 |
-| user_lead_analysis | 1.7.0 | v1.6.3 |
+| user_lead_analysis | 1.7.4 | v1.7.4 |
 | user_lead_review | 1.6.3 | v1.6.3 |
 | user_lead_review_advanced | 1.7.0 | v1.7.0 |
 | user_lead_filter | 1.6.1 | v1.6.1 |
@@ -56,6 +56,7 @@
 | V1.7.1 | 2026-08-17 | 管理页重构：线索列表对接 api_job 实时精筛结果（分页/倒序/日期·等级筛选/CSV 导出/链路详情），撤销分析任务模块 | [design](V1.7/v1.7.1-design.md) / [plan](V1.7/v1.7.1-plan.md) |
 | V1.7.2 | 2026-08-24 | 评论初筛 ID 抄写移出 LLM：以批次内临时序号 index 定位评论、代码层集合校验并还原真实 comment_id，修复廉价模型抄错 19 位 ID 导致的静默失败（3246/6794 单条作业假失败），对外契约不变 | [design](V1.7/v1.7.2-design.md) |
 | V1.7.3 | 2026-08-24 | 定级等级对外映射统一：H/A→high、B→medium、C→low；各内部等级保留原 base/floor（C 新增 45/40）；新增 `api_job.lead_grades` 列落真实 HABC 供内部审计，不再靠反推 code | [design](V1.7/v1.7.3-design.md) |
+| V1.7.4 | 2026-08-24 | 阶段二匹配基准约束：先用与用户目标车型最接近的在售车型作对比车型，修复多款在售车型并存时选错参考车导致误判无关而错误降级，契约不变 | [design](V1.7/v1.7.4-design.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次
