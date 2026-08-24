@@ -1,11 +1,12 @@
 skill_id: comment_lead_screening
-version: "1.3"
+version: "1.7.2"
 description: >
   结合视频语境批量判断评论的购车线索价值：识别无意义评论、营销内容、
   水军，独立判定"是否车主"与"购车意向"两标签及非车主积极信号，
-  区分本人意向与替他人问询/怂恿他人购买。
+  区分本人意向与替他人问询/怂恿他人购买。V1.7.2 起 LLM 经批次内临时
+  序号 index 定位评论，不读不写真实 comment_id。
 model:
   name: ""
   temperature: 0.1
-prompt_file: comment_lead_screening_v3.txt
-prompt_version: "v3"
+prompt_file: comment_lead_screening_v1.7.2.txt
+prompt_version: "v1.7.2"

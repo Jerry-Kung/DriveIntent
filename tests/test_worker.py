@@ -30,7 +30,7 @@ async def test_worker_full_pipeline(session):
     provider = MockProvider()
     provider.queue(
         CONTEXT_JSON,
-        json.dumps({"items": [_item(c.id)]}, ensure_ascii=False),
+        json.dumps({"items": [_item(0)]}, ensure_ascii=False),
         NOT_FILTERED_JSON,
         LEAD_JSON.replace("__CID__", str(c.id)),
         REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)

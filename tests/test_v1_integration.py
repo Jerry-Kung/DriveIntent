@@ -49,7 +49,7 @@ async def test_comment_screening_end_to_end(env):
     provider = MockProvider()
     provider.queue(json.dumps({"brand": "测试"}),
                    json.dumps({"items": [
-                       {"comment_id": "cm_1", "is_meaningful": True,
+                       {"index": 0, "is_meaningful": True,
                         "is_suspected_marketing": False,
                         "has_purchase_intent": True, "reason": "真实车主"}]}))
     executor = SkillExecutor(LLMGateway(provider))

@@ -5,10 +5,13 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.matching.loader import build_our_models_summary, load_our_models
 from app.models import AnalysisResult, Comment, Video
-from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
+from app.schemas.skills import (CommentScreeningBatchResult,
+                                CommentScreeningResult, UserLeadResult,
                                 VideoContextResult)
 from app.services.results import get_current_result, save_result
 from app.skills.analysis_polish import apply_polish
+from app.skills.screening_batch import (build_screening_input,
+                                        map_batch_result)
 from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
 from app.skills.user_filter import build_filtered_lead_result, run_user_filter
@@ -22,7 +25,7 @@ USER_ANALYSIS_SKILL = "user_lead_analysis"
 
 SKILL_VERSIONS = {
     VIDEO_CONTEXT_SKILL: "1.1",
-    COMMENT_SCREENING_SKILL: "1.3",
+    COMMENT_SCREENING_SKILL: "1.7.2",
     USER_ANALYSIS_SKILL: "1.7.0",
     USER_REVIEW_SKILL: "1.6.3",
     USER_REVIEW_ADVANCED_SKILL: "1.7.0",
@@ -61,15 +64,12 @@ async def run_video_context(session: Session, executor: SkillExecutor,
 async def _call_screening(executor: SkillExecutor,
                           video_context: dict,
                           comments: list[Comment]) -> CommentScreeningResult:
-    context = {
-        "video_context_json": json.dumps(video_context, ensure_ascii=False),
-        "comments_json": json.dumps(
-            [{"comment_id": str(c.id), "content": c.content}
-             for c in comments], ensure_ascii=False),
-        "comment_count": str(len(comments)),
-    }
-    return await executor.run(
-        COMMENT_SCREENING_SKILL, context, CommentScreeningResult)
+    context = build_screening_input(
+        video_context, [(str(c.id), c.content) for c in comments])
+    batch: CommentScreeningBatchResult = await executor.run(
+        COMMENT_SCREENING_SKILL, context, CommentScreeningBatchResult)
+    # LLM 只回传 index，代码层按输入顺序还原真实 comment_id（含完整性校验）
+    return map_batch_result(batch, [str(c.id) for c in comments])
 
 
 def _save_screening_items(session: Session,
@@ -99,21 +99,23 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
     if not comments:
         return
     resolved_ids = [c.id for c in comments]
-    expected = {str(c.id) for c in comments}
     # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个重试/递归
     # 期间的所有 LLM 调用
     session.commit()
 
     for _ in range(settings.llm_max_retries):
-        result = await _call_screening(executor, ctx_row.result, comments)
-        if (len(result.items) == len(comments)
-                and {i.comment_id for i in result.items} == expected):
-            _save_screening_items(session, result)
-            return
+        try:
+            result = await _call_screening(executor, ctx_row.result, comments)
+        except ValueError:
+            # index 集合不完整/重复（_call_screening 的映射层抛错），换一次
+            # 全新 LLM 输出重试
+            continue
+        _save_screening_items(session, result)
+        return
     # 多次整批失败：拆半递归；单条仍失败则抛错
     if len(resolved_ids) == 1:
         raise SkillExecutionError(
-            f"评论 {comment_ids} 筛选输出 ID 持续不一致")
+            f"评论 {comment_ids} 筛选输出 index 持续不一致")
     mid = len(resolved_ids) // 2
     await screen_comment_batch(session, executor, video_id, resolved_ids[:mid])
     await screen_comment_batch(session, executor, video_id, resolved_ids[mid:])

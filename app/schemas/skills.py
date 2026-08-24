@@ -39,8 +39,13 @@ class VideoContextResult(BaseModel):
         return v
 
 
-class CommentScreeningItem(BaseModel):
-    comment_id: str
+class _ScreeningFields(BaseModel):
+    """评论初筛的判定字段（不含任何标识键）。
+
+    V1.7.2 起拆出：LLM 面向对象用 `index`（批次内临时序号）定位评论，
+    落库与下游面向对象用 `comment_id`（真实主键）。两者共用本类字段，
+    避免两套 schema 字段漂移。
+    """
     is_meaningful: bool = False
     is_automotive_related: bool = False
     is_purchase_related: bool = False
@@ -64,8 +69,27 @@ class CommentScreeningItem(BaseModel):
     confidence: float = 0.0
 
 
+class CommentScreeningItem(_ScreeningFields):
+    """落库与下游消费的初筛结果条目，标识键为真实 comment_id。"""
+    comment_id: str
+
+
 class CommentScreeningResult(BaseModel):
     items: list[CommentScreeningItem]
+
+
+class CommentScreeningBatchItem(_ScreeningFields):
+    """V1.7.2：LLM 面向的输出条目，标识键为批次内临时序号 index。
+
+    LLM 不读不写真实 comment_id（廉价模型抄写 19 位 ID 出错率高）。
+    代码层按 index 还原真实 ID，见 app.skills.screening_batch。
+    """
+    index: int
+
+
+class CommentScreeningBatchResult(BaseModel):
+    """V1.7.2：LLM 面向的评论初筛输出契约。"""
+    items: list[CommentScreeningBatchItem]
 
 
 class UserLeadResult(BaseModel):

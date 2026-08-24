@@ -20,7 +20,7 @@ class _Factory:
 async def test_worker_runs_comment_job(session):
     ctx = json.dumps({"brand": "测试"})
     screening = json.dumps({"items": [
-        {"comment_id": "cm_1", "is_meaningful": True,
+        {"index": 0, "is_meaningful": True,
          "is_suspected_marketing": False, "has_purchase_intent": True,
          "reason": "真实"}]})
     provider = MockProvider()

@@ -29,8 +29,9 @@ def _setup(session, n_comments=2):
     return v, comments
 
 
-def _item(cid, purchase=True):
-    return {"comment_id": str(cid), "is_meaningful": True,
+def _item(idx, purchase=True):
+    # V1.7.2：LLM 输出以批次内临时序号 index 定位评论，不再含 comment_id
+    return {"index": idx, "is_meaningful": True,
             "is_automotive_related": True, "is_purchase_related": purchase,
             "is_suspected_marketing": False,
             "intent_signals": ["price_inquiry"] if purchase else [],
@@ -47,7 +48,7 @@ async def test_screen_batch_saves_per_comment(session):
     ids = [c.id for c in comments]
     provider = MockProvider()
     provider.queue(json.dumps(
-        {"items": [_item(ids[0]), _item(ids[1], purchase=False)]},
+        {"items": [_item(0), _item(1, purchase=False)]},
         ensure_ascii=False))
     executor = SkillExecutor(LLMGateway(provider))
 
@@ -65,11 +66,11 @@ async def test_screen_batch_splits_on_id_mismatch(session):
     v, comments = _setup(session, n_comments=2)
     ids = [c.id for c in comments]
     provider = MockProvider()
-    # 整批返回错误 ID（3 次重试全失败）→ 拆成两个单条批次，各自成功
-    bad = json.dumps({"items": [_item("999")]})
+    # 整批返回错误 index（越界，3 次重试全失败）→ 拆成两个单条批次，各自成功
+    bad = json.dumps({"items": [_item(999)]})
     provider.queue(bad, bad, bad,
-                   json.dumps({"items": [_item(ids[0])]}),
-                   json.dumps({"items": [_item(ids[1])]}))
+                   json.dumps({"items": [_item(0)]}),
+                   json.dumps({"items": [_item(0)]}))
     executor = SkillExecutor(LLMGateway(provider), max_retries=3)
 
     await screen_comment_batch(session, executor, v.id, ids)
@@ -85,12 +86,12 @@ async def test_screen_batch_splits_on_duplicate_items(session):
     v, comments = _setup(session, n_comments=2)
     ids = [c.id for c in comments]
     provider = MockProvider()
-    # 集合正确但条数错误（重复 item）：3 次重试全失败 → 拆成两个单条批次
+    # 集合正确但条数错误（重复 index）：3 次重试全失败 → 拆成两个单条批次
     dup = json.dumps(
-        {"items": [_item(ids[0]), _item(ids[0]), _item(ids[1])]})
+        {"items": [_item(0), _item(0), _item(1)]})
     provider.queue(dup, dup, dup,
-                   json.dumps({"items": [_item(ids[0])]}),
-                   json.dumps({"items": [_item(ids[1])]}))
+                   json.dumps({"items": [_item(0)]}),
+                   json.dumps({"items": [_item(0)]}))
     executor = SkillExecutor(LLMGateway(provider), max_retries=3)
 
     await screen_comment_batch(session, executor, v.id, ids)

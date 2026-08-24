@@ -31,10 +31,10 @@ def _executor(*responses):
 async def test_screening_maps_results():
     ctx = json.dumps({"brand": "测试", "content_type": "试驾"})
     screening = json.dumps({"items": [
-        {"comment_id": "cm_1", "is_meaningful": True,
+        {"index": 0, "is_meaningful": True,
          "is_suspected_marketing": False, "has_purchase_intent": True,
          "reason": "真实车主"},
-        {"comment_id": "cm_2", "is_meaningful": False,
+        {"index": 1, "is_meaningful": False,
          "reason": "数字刷屏"}]})
     out = await run_comment_screening(_executor(ctx, screening), _req())
     results = out["results"]
@@ -52,9 +52,9 @@ _CTX = json.dumps({"brand": "测试", "content_type": "试驾"})
 async def test_owner_without_intent_filtered():
     # V1.3：无购车意向的车主（纯讨论）不过筛，filter_type=no_purchase_intent
     screening = json.dumps({"items": [
-        {"comment_id": "cm_1", "is_meaningful": True, "is_car_owner": True,
+        {"index": 0, "is_meaningful": True, "is_car_owner": True,
          "has_purchase_intent": False, "reason": "我这台开了2万公里，油耗8个"},
-        {"comment_id": "cm_2", "is_meaningful": False, "reason": "刷屏"}]})
+        {"index": 1, "is_meaningful": False, "reason": "刷屏"}]})
     out = await run_comment_screening(_executor(_CTX, screening), _req())
     r = out["results"][0]
     assert r["passed"] is False
@@ -67,10 +67,10 @@ async def test_owner_without_intent_filtered():
 async def test_owner_with_trade_in_intent_passes():
     # V1.3：车主表达增换购意向 → 必过筛（V1.1 时代恒被过滤，行为变更点）
     screening = json.dumps({"items": [
-        {"comment_id": "cm_1", "is_meaningful": True, "is_car_owner": True,
+        {"index": 0, "is_meaningful": True, "is_car_owner": True,
          "has_purchase_intent": True, "intent_strength": "high",
          "reason": "开了5年想置换升级"},
-        {"comment_id": "cm_2", "is_meaningful": False, "reason": "刷屏"}]})
+        {"index": 1, "is_meaningful": False, "reason": "刷屏"}]})
     out = await run_comment_screening(_executor(_CTX, screening), _req())
     r = out["results"][0]
     assert r["passed"] is True

@@ -3,9 +3,11 @@ import json
 from app.api.mapping import map_screening_item, now_iso
 from app.api.schemas import CommentObject, CommentScreeningRequest
 from app.config import settings
-from app.schemas.skills import (CommentScreeningItem, CommentScreeningResult,
-                                VideoContextResult)
+from app.schemas.skills import (CommentScreeningBatchResult,
+                                CommentScreeningItem, VideoContextResult)
 from app.skills.executor import SkillExecutor
+from app.skills.screening_batch import (build_screening_input,
+                                        map_batch_result)
 from app.workflow.pipeline import (COMMENT_SCREENING_SKILL,
                                    VIDEO_CONTEXT_SKILL)
 
@@ -28,15 +30,12 @@ async def _video_context(executor: SkillExecutor,
 
 async def _screen_batch(executor: SkillExecutor, video_context: dict,
                         batch: list[CommentObject]) -> dict[str, CommentScreeningItem]:
-    ctx = {
-        "video_context_json": json.dumps(video_context, ensure_ascii=False),
-        "comments_json": json.dumps(
-            [{"comment_id": c.comment_id, "content": c.comment_content}
-             for c in batch], ensure_ascii=False),
-        "comment_count": str(len(batch)),
-    }
-    result: CommentScreeningResult = await executor.run(
-        COMMENT_SCREENING_SKILL, ctx, CommentScreeningResult)
+    context = build_screening_input(
+        video_context, [(c.comment_id, c.comment_content) for c in batch])
+    out: CommentScreeningBatchResult = await executor.run(
+        COMMENT_SCREENING_SKILL, context, CommentScreeningBatchResult)
+    # LLM 只回传 index，代码层按输入顺序还原真实 comment_id（含完整性校验）
+    result = map_batch_result(out, [c.comment_id for c in batch])
     return {i.comment_id: i for i in result.items}
 
 

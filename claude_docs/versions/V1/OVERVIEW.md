@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-17（随 V1.7.1 发布）
+> 最后更新：2026-08-24（随 V1.7.2 发布）
 
 ## 能力快照
 
@@ -19,7 +19,7 @@
 
 | Skill | config version | prompt |
 |---|---|---|
-| comment_lead_screening | 1.3 | v3 |
+| comment_lead_screening | 1.7.2 | v1.7.2 |
 | video_context_analysis | 1.1 | v2 |
 | user_lead_analysis | 1.7.0 | v1.6.3 |
 | user_lead_review | 1.6.3 | v1.6.3 |
@@ -54,6 +54,7 @@
 | V1.6.4 | 2026-08-13 | analysis 润色节点：定级+复核后独立 LLM 润色三个对外叙述字段（英文泄漏/定级矛盾/可读性），复核节点补接入对外 API 路径，复核 fail-open 补日志，契约不变 | [design](V1.6/v1.6.4-design.md) / [plan](V1.6/v1.6.4-plan.md) |
 | V1.7.0 | 2026-08-17 | 审查节点分级分流（C 短路 / B 普通审查 / A·H 高级审查，B→A/H 追加高级终审）+ 高级模型 `LLM_MODEL_ADVANCED`（永久深度思考）+ 润色对最终 C 短路，契约不变 | [design](V1.7/design.md) / [plan](V1.7/plan.md) |
 | V1.7.1 | 2026-08-17 | 管理页重构：线索列表对接 api_job 实时精筛结果（分页/倒序/日期·等级筛选/CSV 导出/链路详情），撤销分析任务模块 | [design](V1.7/v1.7.1-design.md) / [plan](V1.7/v1.7.1-plan.md) |
+| V1.7.2 | 2026-08-24 | 评论初筛 ID 抄写移出 LLM：以批次内临时序号 index 定位评论、代码层集合校验并还原真实 comment_id，修复廉价模型抄错 19 位 ID 导致的静默失败（3246/6794 单条作业假失败），对外契约不变 | [design](V1.7/v1.7.2-design.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次

@@ -58,7 +58,7 @@ async def test_screen_comment_batch_releases_connection_during_llm(session):
     v, comments = _screening_setup(session)
     ids = [c.id for c in comments]
     spy = _spy(session, json.dumps(
-        {"items": [_item(ids[0]), _item(ids[1], purchase=False)]},
+        {"items": [_item(0), _item(1, purchase=False)]},
         ensure_ascii=False))
 
     await screen_comment_batch(session, spy, v.id, ids)

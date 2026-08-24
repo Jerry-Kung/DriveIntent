@@ -177,9 +177,9 @@ def test_v11_video_context_config_uses_v2():
 def test_v13_screening_config_uses_v3():
     from app.skills.executor import load_skill_config
     config = load_skill_config("comment_lead_screening")
-    assert config.prompt_file == "comment_lead_screening_v3.txt"
-    assert config.prompt_version == "v3"
-    assert config.version == "1.3"
+    assert config.prompt_file == "comment_lead_screening_v1.7.2.txt"
+    assert config.prompt_version == "v1.7.2"
+    assert config.version == "1.7.2"
 
 
 def test_v11_video_context_prompt_renders_with_new_fields():
@@ -213,4 +213,4 @@ def test_v13_screening_prompt_renders_with_label_fields():
 
 def test_v13_pipeline_screening_version_bumped():
     from app.workflow.pipeline import COMMENT_SCREENING_SKILL, SKILL_VERSIONS
-    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.3"
+    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.7.2"

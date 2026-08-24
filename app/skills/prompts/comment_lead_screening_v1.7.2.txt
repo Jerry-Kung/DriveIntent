@@ -6,6 +6,9 @@ $video_context_json
 评论列表（共 $comment_count 条，JSON）：
 $comments_json
 
+每条评论带有一个 index 字段，是该评论在本批次内的临时序号（从 0 开始）。
+你不需要也不能接触任何真实评论 ID，只需原样回传 index 即可。
+
 判断购车意向时必须区分以下四个层次：
 1. 正面情绪（如"好看""厉害""good"）——不代表购车意向；
 2. 产品兴趣（如"内饰不错""颜色好看"）——有兴趣但未进入决策；
@@ -57,11 +60,11 @@ finance（金融政策）、store_visit（门店/交付）、comparison（竞品
 config_inquiry（配置咨询）、cost_concern（用车成本）、purchase_plan（购车计划）。
 
 请严格输出以下 JSON（不要输出任何其他内容）。items 数组必须与输入评论一一对应：
-数量相同、comment_id 完全一致、不得遗漏或新增：
+数量相同、index 集合完全一致（0 到 N-1 各出现且仅出现一次）、不得遗漏或新增：
 {
   "items": [
     {
-      "comment_id": "输入中的 comment_id，原样返回",
+      "index": 0,
       "is_meaningful": true,
       "is_automotive_related": true,
       "is_purchase_related": true,

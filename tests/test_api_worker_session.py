@@ -61,7 +61,7 @@ COMMENT_PAYLOAD = {"comments": [
      "comment_time": "2026-07-19T14:23:00+08:00", "comment_like_count": 1}]}
 
 CTX_JSON = '{"brand": "测试"}'
-SCREENING_JSON = ('{"items": [{"comment_id": "cm_1", "is_meaningful": true,'
+SCREENING_JSON = ('{"items": [{"index": 0, "is_meaningful": true,'
                   ' "is_suspected_marketing": false,'
                   ' "has_purchase_intent": true, "reason": "真实"}]}')
 
