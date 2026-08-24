@@ -1,5 +1,6 @@
 data/
 config/our_models.json
+scripts/temp_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
