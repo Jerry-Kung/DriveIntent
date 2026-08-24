@@ -23,7 +23,8 @@ class ApiJobWorker:
         self.poll_interval = poll_interval or settings.worker_poll_interval
 
     async def _execute(self, job_id: str, job_type: str, payload: dict,
-                       vision_sink: dict | None = None) -> dict:
+                       vision_sink: dict | None = None,
+                       grade_sink: list | None = None) -> dict:
         """执行作业。只接纯数据，不持有会话，也不触碰 ORM 对象。
 
         V1.4.3：接收 ORM 对象会在访问 deferred 的 request_payload 时重新
@@ -43,7 +44,8 @@ class ApiJobWorker:
             req = ProfileAnalysisRequest.model_validate(payload)
             return await run_profile_analysis(self.executor, self.gateway, req,
                                               progress_cb=cb,
-                                              vision_sink=vision_sink)
+                                              vision_sink=vision_sink,
+                                              grade_sink=grade_sink)
         raise ValueError(f"未知作业类型: {job_type}")
 
     @staticmethod
@@ -80,6 +82,8 @@ class ApiJobWorker:
 
         # 识图文本收集器：终态时写回 payload，替代 base64 截图
         vision: dict[str, str] = {}
+        # V1.7.3：真实内部 HABC 等级收集器，终态写 api_job.lead_grades
+        grades: list[str] = []
 
         # 无连接持有：整个 LLM 调用期间不占用连接池
         # V1.7.1：执行期间写入 job_id 上下文，LLM 日志落库线程据此精确
@@ -88,7 +92,8 @@ class ApiJobWorker:
         try:
             try:
                 result = await self._execute(job_id, job["job_type"], payload,
-                                             vision_sink=vision)
+                                             vision_sink=vision,
+                                             grade_sink=grades)
             except Exception as e:
                 logger.exception("API 作业 %s 执行失败", job_id)
                 # 会话2：写失败状态
@@ -106,7 +111,8 @@ class ApiJobWorker:
                     "全部条目处理失败", payload, vision)
             else:
                 await asyncio.to_thread(
-                    self._finish, job_id, result, status, payload, vision)
+                    self._finish, job_id, result, status, payload, vision,
+                    grades)
             return True
         finally:
             _CURRENT_JOB.reset(job_token)
@@ -127,12 +133,12 @@ class ApiJobWorker:
         return job
 
     def _finish(self, job_id: str, result: dict, status: str,
-                payload: dict, vision: dict) -> None:
+                payload: dict, vision: dict, grades: list) -> None:
         """会话3 的同步体，供 to_thread 调用（关键字参数无法直接传给
         to_thread 的位置参数形式，故包一层）。"""
         finish_job_by_id(self.session_factory, job_id, result=result,
                          status=status, error=None, payload=payload,
-                         vision_text=vision)
+                         vision_text=vision, lead_grades=grades)
 
     async def _loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():

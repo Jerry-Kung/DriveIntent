@@ -86,10 +86,14 @@ def _strip_screenshots(job: ApiJob) -> None:
 
 
 def finish_job(session: Session, job: ApiJob, *, result: dict | None,
-               status: str, error: str | None) -> None:
+               status: str, error: str | None,
+               lead_grades: list | None = None) -> None:
     job.result = result
     job.status = status
     job.error = error
+    if lead_grades is not None:
+        # V1.7.3：与 result.results[] 按下标对齐的真实 HABC 等级，供审计读取
+        job.lead_grades = lead_grades
     job.finished_at = datetime.utcnow()
     _strip_screenshots(job)
     session.commit()
@@ -186,7 +190,8 @@ def set_progress_by_id(session_factory, job_id: str, done: int) -> None:
 def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
                      status: str, error: str | None,
                      payload: dict | None = None,
-                     vision_text: dict | None = None) -> None:
+                     vision_text: dict | None = None,
+                     lead_grades: list | None = None) -> None:
     """落终态。传入 payload 时直接赋值已剥离版本，省去重读大列。"""
     with session_factory() as s:
         job = s.get(ApiJob, job_id)
@@ -195,6 +200,9 @@ def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
         job.result = result
         job.status = status
         job.error = error
+        if lead_grades is not None:
+            # V1.7.3：与 result.results[] 按下标对齐的真实 HABC 等级，供审计读取
+            job.lead_grades = lead_grades
         job.finished_at = datetime.utcnow()
         if job.job_type == "profile_analysis":
             if payload is None:

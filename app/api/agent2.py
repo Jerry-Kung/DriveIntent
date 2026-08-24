@@ -78,11 +78,16 @@ async def analyze_account(executor, account: AccountObject, vision_text: str,
 async def run_profile_analysis(executor, gateway: LLMGateway,
                                request: ProfileAnalysisRequest,
                                *, progress_cb=None,
-                               vision_sink: dict | None = None) -> dict:
+                               vision_sink: dict | None = None,
+                               grade_sink: list | None = None) -> dict:
     """progress_cb 为 async 可调用（V1.4.4：进度落库经线程池执行）。
 
     vision_sink：传入 dict 时，按账号下标收集识图文本，供调用方在终态写回
     payload（V1.4.4：库中以纯文本替代 base64 截图）。不参与对外结果。
+
+    grade_sink：传入 list 时，按账号下标收集每账号真实内部 HABC 等级
+    （V1.7.3：对外 intent_level_code 已为多对一，不能据此反推 HABC）。
+    失败账号补 "C" 保持与 results 对齐。不参与对外结果。
     """
     results: list[dict] = []
     ts = now_iso()
@@ -118,6 +123,9 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                         executor, json.dumps(evidence, ensure_ascii=False),
                         our_models_summary, out)
                     await apply_polish(executor, out)
+            if grade_sink is not None:
+                # 与 results 按下标对齐；失败账号在 except 分支补 "C"
+                grade_sink.append(out.lead_grade)
             mapped = map_profile_result(
                 out, screenshot_available=shot_available,
                 has_comments=has_comments, processed_at=ts)
@@ -132,6 +140,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "has_purchase_intent": None, "profile_tags": [],
                 "profile_summary": "", "analysis": "", "processed_at": ts,
                 "error": str(e)[:500]})
+            if grade_sink is not None:
+                grade_sink.append("C")  # 失败账号无有效等级，保持下标对齐
         finally:
             _CURRENT_ACCOUNT.reset(account_token)
         done += 1

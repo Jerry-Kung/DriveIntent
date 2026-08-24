@@ -44,8 +44,17 @@ def test_map_profile_high_to_gao():
     assert 85 <= r.value_score <= 100
 
 
-def test_map_profile_c_grade_no_value():
+def test_map_profile_c_grade_maps_low():
+    # V1.7.3：C 映射为低(low)；valid C 现已产出价值，不再是 null
     out = UserLeadResult(lead_grade="C", is_valid_lead=True, confidence=0.5)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is True
+    assert (r.intent_level, r.intent_level_code) == ("低", "low")
+
+
+def test_map_profile_c_grade_invalid_no_value():
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False, confidence=0.5)
     r = map_profile_result(out, screenshot_available=True, has_comments=True,
                            processed_at="t")
     assert r.has_value is False
@@ -59,7 +68,7 @@ def test_map_profile_screenshot_missing_lowers_score():
     without = map_profile_result(out, screenshot_available=False,
                                  has_comments=True, processed_at="t")
     assert without.value_score < with_shot.value_score
-    assert without.value_score >= 70  # 不得跌出 A 级(medium) 70-84 区间
+    assert without.value_score >= 70  # 不得跌出 A 级(high) 下界 70（base 77）
 
 
 def test_map_profile_screenshot_missing_high_grade_stays_in_range():
@@ -244,8 +253,8 @@ def test_map_profile_carries_labels():
 
 
 def test_map_profile_no_value_still_carries_labels():
-    # has_value=false（如 C 级）仍透出两标签
-    out = UserLeadResult(lead_grade="C", is_valid_lead=True,
+    # has_value=false（如 C 级且 is_valid_lead=False）仍透出两标签
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
                          is_car_owner=True, has_purchase_intent=False)
     r = map_profile_result(out, screenshot_available=True, has_comments=True,
                            processed_at="t")

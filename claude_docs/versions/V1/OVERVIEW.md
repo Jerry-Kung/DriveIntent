@@ -1,14 +1,14 @@
 # V1 版本总览
 
-> 最后更新：2026-08-24（随 V1.7.2 发布）
+> 最后更新：2026-08-24（随 V1.7.3 发布）
 
 ## 能力快照
 
 - **定位**：可通过 docker compose 独立部署的后端微服务，对外提供两个异步 Agent API（评论价值初筛 / 账号画像精筛），同时保留 V0 的 8000 测试链路。
-- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。
+- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。V1.7.3 起 Agent2 等级多对一映射：H/A→high、B→medium、C→low，分数区间随之调整（见对接文档等级表）。
 - **核心能力现状（V1.6 后）**：
   - **Agent1（评论初筛）**：filter_type 分类（`genuine_user` / `bot_spam` / `marketing_account` / `noise` / `off_topic` / `no_purchase_intent`）；评论级 `is_car_owner` / `has_purchase_intent` 两独立标签；"有购车意向必过筛"等硬规则由代码层 `resolve_filter_type()` 确定性合成；非本人意向（替他人问询/怂恿/营销口吻）识别降档。
-  - **Agent2（账号精筛）**：定级前先过"无效用户过滤"节点（独立 LLM 调用，V1.6）——已购无新购计划/推广他人/仅替他人问询/疑似营销号/汽车从业者/其他六类命中直接定 C 不进定级，fail-open 放行；账号级两标签 + H/A/B/C 定级三阶段流水线（V1.6.2）——评论基线（多条同质评论累积强化已并入基线）→ 在售车型匹配度四档调整 → 主页截图结构化画像有限上调；定级后接分级复核（V1.7.0）——初始 C 不审查不润色直接输出、初始 B 走普通模型审查（`user_lead_review`，V1.6.2/1.6.3 销售视角复核 + 单次至多改一级、C 为下限、fail-open）、初始 A/H 走高级模型审查（`user_lead_review_advanced`，逐段核验五段论证与推理链，模型路由到 `LLM_MODEL_ADVANCED` 并强制深度思考）；初始 B 经普通审查 upgrade 到 A/H 时追加一次高级终审。复核改级时一并修订对外叙述（V1.6.3）——按段标题锚点替换 `analysis_text` 第五段"总体评价"与 `lead_summary`，前四段事实陈述逐字保留，锚点缺失退化为文末追加。复核后统一接 analysis 润色节点 `user_analysis_polish`（V1.6.4，两路径同接，最终定级 C 跳过）——针对最终定级重写 analysis_text / lead_summary / profile_summary，清除英文字段泄漏、消除叙述与定级矛盾，只改文本不改级，fail-open 保留原文；复核节点同版起接入对外 API 路径（此前仅 V0 流水线有复核）。
+  - **Agent2（账号精筛）**：定级前先过"无效用户过滤"节点（独立 LLM 调用，V1.6）——已购无新购计划/推广他人/仅替他人问询/疑似营销号/汽车从业者/其他六类命中直接定 C 不进定级，fail-open 放行；账号级两标签 + H/A/B/C 定级三阶段流水线（V1.6.2）——评论基线（多条同质评论累积强化已并入基线）→ 在售车型匹配度四档调整 → 主页截图结构化画像有限上调；定级后接分级复核（V1.7.0）——初始 C 不审查不润色直接输出、初始 B 走普通模型审查（`user_lead_review`，V1.6.2/1.6.3 销售视角复核 + 单次至多改一级、C 为下限、fail-open）、初始 A/H 走高级模型审查（`user_lead_review_advanced`，逐段核验五段论证与推理链，模型路由到 `LLM_MODEL_ADVANCED` 并强制深度思考）；初始 B 经普通审查 upgrade 到 A/H 时追加一次高级终审。复核改级时一并修订对外叙述（V1.6.3）——按段标题锚点替换 `analysis_text` 第五段"总体评价"与 `lead_summary`，前四段事实陈述逐字保留，锚点缺失退化为文末追加。复核后统一接 analysis 润色节点 `user_analysis_polish`（V1.6.4，两路径同接，最终定级 C 跳过）——针对最终定级重写 analysis_text / lead_summary / profile_summary，清除英文字段泄漏、消除叙述与定级矛盾，只改文本不改级，fail-open 保留原文；复核节点同版起接入对外 API 路径（此前仅 V0 流水线有复核）。**等级对外映射（V1.7.3）**：H/A→high、B→medium、C→low，各内部等级保留原 base/floor（C 新增 45/40）；由于外部 code 已多对一，`api_job.lead_grades` 落每账号真实 HABC 供内部审计读取（`lead_results.py`），审计仍以 HABC 四档呈现，旧数据回退按 code 反推。
   - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）。
   - **后端审计（V1.4）**：内部页 `/audit` 按东八区自然天/小时展示 API 任务量（接收/成功/部分成功/失败）与 LLM 消耗（调用次数/失败/输入输出 tokens/平均耗时，按 skill × 模型细分）；纯只读模块，数据源为既有 `api_job` / `llm_call_log` 落库。
 - **架构要点**：API 路径（`api_job` 表 + ApiJobWorker，纯异步轮询，不写 lead 表）与 V0 流水线路径（lead 表 + Web 页面）并存，共享 LLM Gateway / Skill 执行器 / Prompt 模板层。
@@ -55,6 +55,7 @@
 | V1.7.0 | 2026-08-17 | 审查节点分级分流（C 短路 / B 普通审查 / A·H 高级审查，B→A/H 追加高级终审）+ 高级模型 `LLM_MODEL_ADVANCED`（永久深度思考）+ 润色对最终 C 短路，契约不变 | [design](V1.7/design.md) / [plan](V1.7/plan.md) |
 | V1.7.1 | 2026-08-17 | 管理页重构：线索列表对接 api_job 实时精筛结果（分页/倒序/日期·等级筛选/CSV 导出/链路详情），撤销分析任务模块 | [design](V1.7/v1.7.1-design.md) / [plan](V1.7/v1.7.1-plan.md) |
 | V1.7.2 | 2026-08-24 | 评论初筛 ID 抄写移出 LLM：以批次内临时序号 index 定位评论、代码层集合校验并还原真实 comment_id，修复廉价模型抄错 19 位 ID 导致的静默失败（3246/6794 单条作业假失败），对外契约不变 | [design](V1.7/v1.7.2-design.md) |
+| V1.7.3 | 2026-08-24 | 定级等级对外映射统一：H/A→high、B→medium、C→low；各内部等级保留原 base/floor（C 新增 45/40）；新增 `api_job.lead_grades` 列落真实 HABC 供内部审计，不再靠反推 code | [design](V1.7/v1.7.3-design.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次

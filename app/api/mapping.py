@@ -5,11 +5,16 @@ from app.schemas.skills import CommentScreeningItem, UserLeadResult
 
 _TZ = timezone(timedelta(hours=8))
 
-# 内部线索等级 → 文档意向等级/基准分/区间下界
+# 内部线索等级 → 对外意向等级/基准分/区间下界。
+# V1.7.3：H/A→high、B→medium、C→low，各等级保留原 base/floor（C 新增）。
+# 注意：前向映射从此为多对一，外部 intent_level_code 已无法唯一反推内部
+# HABC——内部审计/统计改读 api_job.lead_grades 真实等级，见
+# app/services/lead_results.py。
 _GRADE_MAP = {
     "H": ("高", "high", 92, 85),
-    "A": ("中", "medium", 77, 70),
-    "B": ("低", "low", 60, 50),
+    "A": ("高", "high", 77, 70),
+    "B": ("中", "medium", 60, 50),
+    "C": ("低", "low", 45, 40),
 }
 
 

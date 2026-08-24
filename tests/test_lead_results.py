@@ -18,12 +18,13 @@ def _acct(uid, code="high", score=90, summary="摘要"):
 
 
 def _job(session, job_id, finished_at, accounts, status="success",
-         payload=None):
+         payload=None, lead_grades=None):
     job = ApiJob(id=job_id, job_type="profile_analysis", status=status,
                  result=_result(accounts), progress_total=len(accounts),
                  progress_done=len(accounts),
                  created_at=finished_at - timedelta(minutes=5),
-                 finished_at=finished_at, request_payload=payload)
+                 finished_at=finished_at, request_payload=payload,
+                 lead_grades=lead_grades)
     session.add(job)
     session.commit()
     return job
@@ -37,6 +38,15 @@ def test_grade_of():
     assert grade_of({}) == "C"
 
 
+def test_grade_of_internal_grade_wins():
+    # V1.7.3：lead_grades 提供的真实 HABC 优先于 code 反推
+    # （对外已多对一：A 与 H 均映射 high、B 与 C 均映射 low）
+    assert grade_of({"intent_level_code": "high"}, "A") == "A"
+    assert grade_of({"intent_level_code": "high"}, "H") == "H"
+    assert grade_of({"intent_level_code": "low"}, "C") == "C"
+    assert grade_of({"intent_level_code": "low"}, "B") == "B"
+
+
 def test_flatten_and_order(session):
     t1 = datetime(2026, 8, 14, 8, 0, 0)
     t2 = datetime(2026, 8, 14, 9, 0, 0)
@@ -48,6 +58,30 @@ def test_flatten_and_order(session):
     assert [r["account_uid"] for r in data["rows"]] == ["u3", "u1", "u2"]
     assert data["rows"][0]["job_id"] == "j2"
     assert data["rows"][0]["grade"] == "A"
+
+
+def test_grades_read_from_lead_grades_by_index(session):
+    # V1.7.3: lead_grades provides the true HABC by index, takes priority
+    # over code-based reversal. Use accounts whose code differs from the
+    # internal grade to prove the read comes from lead_grades.
+    t = datetime(2026, 8, 14, 8, 0, 0)
+    _job(session, "j1", t,
+         [_acct("u1", code="high"), _acct("u2", code="low"),
+          _acct("u3", code="medium")],
+         lead_grades=["A", "C", "B"])
+    data = query_lead_results(session, page=1, size=20)
+    assert [r["grade"] for r in data["rows"]] == ["A", "C", "B"]
+
+
+def test_grades_fallback_when_lead_grades_null(session):
+    # Old data (lead_grades NULL) falls back to code reversal:
+    # high->H, low->B, medium->A
+    t = datetime(2026, 8, 14, 8, 0, 0)
+    _job(session, "j1", t,
+         [_acct("u1", code="high"), _acct("u2", code="low"),
+          _acct("u3", code="medium")])
+    data = query_lead_results(session, page=1, size=20)
+    assert [r["grade"] for r in data["rows"]] == ["H", "B", "A"]
 
 
 def test_pagination_across_jobs(session):

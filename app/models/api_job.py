@@ -20,6 +20,11 @@ class ApiJob(Base):
     # 不搬运该列，worker 访问属性时才按需加载
     request_payload: Mapped[dict | None] = mapped_column(JSON, deferred=True)
     result: Mapped[dict | None] = mapped_column(JSON)
+    # V1.7.3：每账号结果的真实内部 HABC 等级，与 result.results[] 按下标一一
+    # 对应。对外 intent_level_code 已变为多对一（H/A→high、B→medium、C→low），
+    # 无法据此反推内部等级；本列供内部审计/统计读取，不进对外契约。历史数据为
+    # NULL，审计回退按 intent_level_code 反推（旧映射一对一，反推仍准确）。
+    lead_grades: Mapped[list | None] = mapped_column(JSON)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)
     progress_done: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)

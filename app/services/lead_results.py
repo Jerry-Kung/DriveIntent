@@ -19,11 +19,21 @@ from app.models import ApiJob, LlmCallLog
 TZ8 = timezone(timedelta(hours=8))
 
 # 对外 intent_level_code → 内部等级；null/error/未知统一 C（口径同
-# docs/20260813-14_精筛定级等级分布统计.md）
+# docs/20260813-14_精筛定级等级分布统计.md）。
+# V1.7.3：前向映射已改多对一（H/A→high、B→medium、C→low），新数据不再依
+# 赖本表反推——api_job.lead_grades 记录真实 HABC，见 grade_of()。本表仅作
+# 旧数据（lead_grades 为 NULL）回退，旧映射一对一，反推仍准确。
 _GRADE_FROM_CODE = {"high": "H", "medium": "A", "low": "B"}
 
 
-def grade_of(acct: dict) -> str:
+def grade_of(acct: dict, internal_grade: str | None = None) -> str:
+    """账号的内部 HABC 等级。
+
+    internal_grade 非空（api_job.lead_grades 提供）时原样返回；为空/缺省
+    时回退按对外 intent_level_code 反推（仅历史数据，旧映射一对一）。
+    """
+    if internal_grade:
+        return internal_grade
     return _GRADE_FROM_CODE.get(acct.get("intent_level_code"), "C")
 
 
@@ -73,11 +83,14 @@ def _base_query(session: Session, *, date_from: str | None = None,
 
 
 def _to_row(job: ApiJob, idx: int, acct: dict) -> dict:
+    # V1.7.3：优先读 lead_grades 真实 HABC；旧数据为 NULL，回退按 code 反推
+    lead_grades = job.lead_grades or []
+    internal_grade = (lead_grades[idx] if idx < len(lead_grades) else None)
     return {
         "job_id": job.id,
         "index": idx,
         "account_uid": acct.get("account_uid") or "",
-        "grade": grade_of(acct),
+        "grade": grade_of(acct, internal_grade),
         "value_score": acct.get("value_score"),
         "is_car_owner": acct.get("is_car_owner"),
         "has_purchase_intent": acct.get("has_purchase_intent"),
@@ -196,13 +209,16 @@ def lead_detail_data(session: Session, job_id: str, index: int) -> dict | None:
                  .filter(LlmCallLog.created_at >= job.created_at,
                          LlmCallLog.created_at <= window_end)
                  .order_by(LlmCallLog.created_at).all())
+    lead_grades = job.lead_grades or []
+    internal_grade = (lead_grades[index] if index < len(lead_grades) else None)
     return {"job_id": job.id, "status": job.status,
             "created_at": _iso_utc8(job.created_at),
             "finished_at": _iso_utc8(job.finished_at),
             "progress_done": job.progress_done,
             "progress_total": job.progress_total,
             "acct": acct, "input": input_acct,
-            "calls": [_call_dict(c) for c in calls], "grade": grade_of(acct)}
+            "calls": [_call_dict(c) for c in calls],
+            "grade": grade_of(acct, internal_grade)}
 
 
 def _csv_safe(value):

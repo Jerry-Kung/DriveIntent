@@ -69,7 +69,7 @@ async def test_profile_no_screenshot_lowers_score():
                              "comment_like_count": 5}]}])
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
-    assert r["intent_level_code"] == "medium"
+    assert r["intent_level_code"] == "high"  # A→高
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
@@ -291,7 +291,7 @@ async def test_v12_profile_upgrade_maps_final_grade():
                              "comment_like_count": 5}]}])
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
-    assert r["intent_level_code"] == "medium"  # A→中
+    assert r["intent_level_code"] == "high"  # A→高（V1.7.3 A 并入 high）
     assert 85 <= r["value_score"] <= 100 or r["value_score"] >= 70
     # 审计字段不进对外契约
     assert "baseline_grade" not in r
@@ -300,7 +300,7 @@ async def test_v12_profile_upgrade_maps_final_grade():
 
 @pytest.mark.asyncio
 async def test_v12_profile_baseline_c_not_upgraded():
-    """基线 C 且 LLM 未上调：最终 lead_grade=C，映射为 has_value=false（C 不在对外区间）。"""
+    """基线 C 且 LLM 未上调：最终 lead_grade=C。is_valid_lead=False → 仍无价值。"""
     profile = json.dumps({"auto_relevance": "无明显汽车相关内容"}, ensure_ascii=False)
     lead = json.dumps({
         "baseline_grade": "C", "profile_adjustment": "none",
@@ -316,7 +316,8 @@ async def test_v12_profile_baseline_c_not_upgraded():
                              "comment_time": "2026-07-19T14:23:00+08:00"}]}])
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
-    assert r["has_value"] is False  # C 级 lead_grade 不在 _GRADE_MAP 对外区间
+    assert r["has_value"] is False  # C 级 is_valid_lead=False，仍无价值
+    assert r["intent_level_code"] is None
 
 
 def test_v121_user_lead_result_has_match_audit_fields():
@@ -449,7 +450,7 @@ async def test_v121_unrelated_model_downgrade_maps_final_grade():
                              "comment_like_count": 3}]}])
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
-    assert r["intent_level_code"] == "low"  # B→低，而非基线 H→高
+    assert r["intent_level_code"] == "medium"  # B→中（V1.7.3），而非基线 H→高
     # 匹配审计字段不进对外契约
     assert "model_match_level" not in r
     assert "match_adjustment" not in r
@@ -745,6 +746,6 @@ async def test_v164_api_review_failure_fail_open():
                              "comment_like_count": 1}]}])
     out = await run_profile_analysis(executor, gateway, req)
     r = out["results"][0]
-    assert r["intent_level_code"] == "medium"     # 初步 A 级保留
+    assert r["intent_level_code"] == "high"     # 初步 A 级保留（A→高）
     assert r["analysis"] == "分析原文"             # 文本保留
     assert r["error"] is None

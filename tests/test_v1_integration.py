@@ -91,6 +91,6 @@ async def test_profile_analysis_end_to_end_no_screenshot(env):
     body = client.get(f"/api/v1/jobs/{job_id}",
                       headers={"Authorization": "Bearer secret"}).json()
     assert body["status"] == "success"
-    assert body["result"]["results"][0]["intent_level_code"] == "medium"
+    assert body["result"]["results"][0]["intent_level_code"] == "high"  # A→高
     # 复核+润色真实走完整个节点序列：响应体 analysis 变为润色后文本
     assert body["result"]["results"][0]["analysis"] == POLISHED
