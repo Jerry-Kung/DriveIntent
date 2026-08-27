@@ -17,6 +17,9 @@ class Lead(Base):
     status: Mapped[str] = mapped_column(String(16), default="new")
     target_brands: Mapped[list | None] = mapped_column(JSON)
     target_models: Mapped[list | None] = mapped_column(JSON)
+    # V1.8.0：意向车型识别与分类（阶段二输出，不参与评级；供下游节点使用）
+    intent_models: Mapped[list | None] = mapped_column(JSON)
+    intent_model_category: Mapped[str | None] = mapped_column(String(4))
     summary: Mapped[str] = mapped_column(Text, default="")
     purchase_stage: Mapped[str | None] = mapped_column(String(64))
     core_needs: Mapped[list | None] = mapped_column(JSON)

@@ -1,15 +1,15 @@
 # V1 版本总览
 
-> 最后更新：2026-08-24（随 V1.7.4 发布）
+> 最后更新：2026-08-27（随 V1.8.0 发布）
 
 ## 能力快照
 
 - **定位**：可通过 docker compose 独立部署的后端微服务，对外提供两个异步 Agent API（评论价值初筛 / 账号画像精筛），同时保留 V0 的 8000 测试链路。
-- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。V1.7.3 起 Agent2 等级多对一映射：H/A→high、B→medium、C→low，分数区间随之调整（见对接文档等级表）。
+- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。V1.7.3 起 Agent2 等级多对一映射：H/A→high、B→medium、C→low，分数区间随之调整（见对接文档等级表）。V1.8.0 起 Agent2 结果新增 `intent_models`（意向车型）/ `intent_model_category`（四档分类，标准可配）两字段（纯增量）。
 - **核心能力现状（V1.6 后）**：
   - **Agent1（评论初筛）**：filter_type 分类（`genuine_user` / `bot_spam` / `marketing_account` / `noise` / `off_topic` / `no_purchase_intent`）；评论级 `is_car_owner` / `has_purchase_intent` 两独立标签；"有购车意向必过筛"等硬规则由代码层 `resolve_filter_type()` 确定性合成；非本人意向（替他人问询/怂恿/营销口吻）识别降档。
-  - **Agent2（账号精筛）**：定级前先过"无效用户过滤"节点（独立 LLM 调用，V1.6）——已购无新购计划/推广他人/仅替他人问询/疑似营销号/汽车从业者/其他六类命中直接定 C 不进定级，fail-open 放行；账号级两标签 + H/A/B/C 定级三阶段流水线（V1.6.2）——评论基线（多条同质评论累积强化已并入基线）→ 在售车型匹配度四档调整 → 主页截图结构化画像有限上调；定级后接分级复核（V1.7.0）——初始 C 不审查不润色直接输出、初始 B 走普通模型审查（`user_lead_review`，V1.6.2/1.6.3 销售视角复核 + 单次至多改一级、C 为下限、fail-open）、初始 A/H 走高级模型审查（`user_lead_review_advanced`，逐段核验五段论证与推理链，模型路由到 `LLM_MODEL_ADVANCED` 并强制深度思考）；初始 B 经普通审查 upgrade 到 A/H 时追加一次高级终审。复核改级时一并修订对外叙述（V1.6.3）——按段标题锚点替换 `analysis_text` 第五段"总体评价"与 `lead_summary`，前四段事实陈述逐字保留，锚点缺失退化为文末追加。复核后统一接 analysis 润色节点 `user_analysis_polish`（V1.6.4，两路径同接，最终定级 C 跳过）——针对最终定级重写 analysis_text / lead_summary / profile_summary，清除英文字段泄漏、消除叙述与定级矛盾，只改文本不改级，fail-open 保留原文；复核节点同版起接入对外 API 路径（此前仅 V0 流水线有复核）。**等级对外映射（V1.7.3）**：H/A→high、B→medium、C→low，各内部等级保留原 base/floor（C 新增 45/40）；由于外部 code 已多对一，`api_job.lead_grades` 落每账号真实 HABC 供内部审计读取（`lead_results.py`），审计仍以 HABC 四档呈现，旧数据回退按 code 反推。
-  - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）。
+  - **Agent2（账号精筛）**：定级前先过"无效用户过滤"节点（独立 LLM 调用，V1.6）——已购无新购计划/推广他人/仅替他人问询/疑似营销号/汽车从业者/其他六类命中直接定 C 不进定级，fail-open 放行；账号级两标签 + H/A/B/C 定级三阶段流水线（V1.6.2，V1.8.0 重构阶段二）——评论基线（多条同质评论累积强化已并入基线）→ 意向车型识别与分类（V1.8.0：只识别归档、**不调整评级**；识别有购买意向的车型 `intent_models`，按可配置四档标准输出 `intent_model_category`，标准配置 `config/intent_categories.json`；V1.2.1 引入的匹配调级与 V1.7.4 的对比基准约束随之退役，如何用分类调整优先级交下游决定）→ 主页截图结构化画像有限上调（作用于基线评级）；定级后接分级复核（V1.7.0）——初始 C 不审查不润色直接输出、初始 B 走普通模型审查（`user_lead_review`，V1.6.2/1.6.3 销售视角复核 + 单次至多改一级、C 为下限、fail-open）、初始 A/H 走高级模型审查（`user_lead_review_advanced`，逐段核验五段论证与推理链，模型路由到 `LLM_MODEL_ADVANCED` 并强制深度思考）；初始 B 经普通审查 upgrade 到 A/H 时追加一次高级终审。复核改级时一并修订对外叙述（V1.6.3）——按段标题锚点替换 `analysis_text` 第五段"总体评价"与 `lead_summary`，前四段事实陈述逐字保留，锚点缺失退化为文末追加。复核后统一接 analysis 润色节点 `user_analysis_polish`（V1.6.4，两路径同接，最终定级 C 跳过）——针对最终定级重写 analysis_text / lead_summary / profile_summary，清除英文字段泄漏、消除叙述与定级矛盾，只改文本不改级，fail-open 保留原文；复核节点同版起接入对外 API 路径（此前仅 V0 流水线有复核）。**等级对外映射（V1.7.3）**：H/A→high、B→medium、C→low，各内部等级保留原 base/floor（C 新增 45/40）；由于外部 code 已多对一，`api_job.lead_grades` 落每账号真实 HABC 供内部审计读取（`lead_results.py`），审计仍以 HABC 四档呈现，旧数据回退按 code 反推。
+  - **配套能力**：视频语境分析注入初筛与用户证据包；主页截图识图（结构化画像 JSON）；我方在售车型配置（`our_models.json`）；意向车型分类标准配置（`intent_categories.json`，V1.8.0）。
   - **后端审计（V1.4）**：内部页 `/audit` 按东八区自然天/小时展示 API 任务量（接收/成功/部分成功/失败）与 LLM 消耗（调用次数/失败/输入输出 tokens/平均耗时，按 skill × 模型细分）；纯只读模块，数据源为既有 `api_job` / `llm_call_log` 落库。
 - **架构要点**：API 路径（`api_job` 表 + ApiJobWorker，纯异步轮询，不写 lead 表）与 V0 流水线路径（lead 表 + Web 页面）并存，共享 LLM Gateway / Skill 执行器 / Prompt 模板层。
 - **数据库会话纪律（V1.4.3 + V1.4.4 + V1.4.5）**：两类 Worker 均不得在 LLM 调用期间持有数据库连接，且**不得在事件循环内执行同步 DB 调用**。API Worker 的 `run_once` 按「认领 → 执行 → 落状态」拆为三段独立短会话，`_execute` 只接纯数据不接 ORM 对象；三段会话与 reaper 全部经 `asyncio.to_thread` 执行（V1.4.4：同步大读取会冻结整个事件循环——实测远程读 13MB payload 阻塞 3.2s，期间所有协程与 HTTP 请求停摆，是连接池耗尽的直接成因；V1.4.5：**LLM 调用日志落库是漏网的另一处高频同步 DB 写入**——实测 3 小时 6703 行约为作业数 27 倍，池耗尽时在事件循环内同步等 `pool_timeout`（30s）且异常被吞、报错全落在受害者调用点上，本次 149 次 QueuePool 报错即由此放大）。业务 Worker 的认领/落状态/推进三处同步调用同样经线程池。进度回调 `progress_cb` 相应改为 async。对应回归测试：`tests/test_api_worker_session.py`、`tests/test_pipeline_connection_release.py`、`tests/test_event_loop_not_blocked.py`、`tests/test_llm_log_not_blocking.py`。
@@ -21,9 +21,9 @@
 |---|---|---|
 | comment_lead_screening | 1.7.2 | v1.7.2 |
 | video_context_analysis | 1.1 | v2 |
-| user_lead_analysis | 1.7.4 | v1.7.4 |
+| user_lead_analysis | 1.8.0 | v1.8.0 |
 | user_lead_review | 1.6.3 | v1.6.3 |
-| user_lead_review_advanced | 1.7.0 | v1.7.0 |
+| user_lead_review_advanced | 1.8.0 | v1.8.0 |
 | user_lead_filter | 1.6.1 | v1.6.1 |
 | image_recognition | 1.4.1 | v2 |
 | user_analysis_polish | 1.6.4 | v1.6.4 |
@@ -57,6 +57,7 @@
 | V1.7.2 | 2026-08-24 | 评论初筛 ID 抄写移出 LLM：以批次内临时序号 index 定位评论、代码层集合校验并还原真实 comment_id，修复廉价模型抄错 19 位 ID 导致的静默失败（3246/6794 单条作业假失败），对外契约不变 | [design](V1.7/v1.7.2-design.md) |
 | V1.7.3 | 2026-08-24 | 定级等级对外映射统一：H/A→high、B→medium、C→low；各内部等级保留原 base/floor（C 新增 45/40）；新增 `api_job.lead_grades` 列落真实 HABC 供内部审计，不再靠反推 code | [design](V1.7/v1.7.3-design.md) |
 | V1.7.4 | 2026-08-24 | 阶段二匹配基准约束：先用与用户目标车型最接近的在售车型作对比车型，修复多款在售车型并存时选错参考车导致误判无关而错误降级，契约不变 | [design](V1.7/v1.7.4-design.md) |
+| V1.8.0 | 2026-08-27 | 阶段二重构：意向车型识别与四档分类（标准可配 `intent_categories.json`），撤销匹配调级（V1.2.1 调级与 V1.7.4 基准约束退役）；`intent_models` / `intent_model_category` 落库（lead 表新两列 + api_job 结果 JSON）并新增对外 API 字段（纯增量） | [design](V1.8/design.md) / [plan](V1.8/plan.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次

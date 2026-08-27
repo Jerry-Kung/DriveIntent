@@ -74,6 +74,7 @@ cp .env.example .env      # Windows: copy .env.example .env
 | `WORKER_POLL_INTERVAL` | `1.0` | Worker 轮询任务间隔（秒） |
 | `COMMENT_BATCH_SIZE` | `30` | 评论批处理条数 |
 | `OUR_MODELS_CONFIG_PATH` | `config/our_models.json` | **V1.1** 我方在售车型配置文件路径（生成方式见 3.2 节） |
+| `INTENT_CATEGORIES_CONFIG_PATH` | `config/intent_categories.json` | **V1.8.0** 意向车型分类标准配置文件路径（见 3.3 节） |
 | `SCREENSHOT_STAGING_DIR` | `data/staging` | **V1.4.4** 截图暂存目录。base64 截图不入库，提交后暂存于此、worker 认领时读回识图、作业终态删除。**须为持久化目录**（Compose 已挂载 `./data:/app/data`），详见第 9 节 |
 | `INTENT_DOWNGRADE_ENABLED` | `true` | **V1.1** 非我方车型意向降级总开关；`false` 完全跳过匹配与降级（快速回退用） |
 
@@ -131,6 +132,31 @@ python scripts/build_our_models.py --input 车型描述.txt
 
 - **Docker Compose**：compose 已将宿主机 `./config` 目录只读挂载进容器（`./config:/app/config:ro`）。把生成的 `our_models.json` 放到服务器项目目录的 `config/` 下，执行 `docker compose restart app`。
 - **裸机**：确认文件位于 `OUR_MODELS_CONFIG_PATH` 指向的路径（相对服务工作目录），重启 uvicorn 进程。
+
+### 3.3 意向车型分类标准配置（V1.8.0）
+
+V1.8.0 起，账号画像精筛（Agent 2）在定级阶段二输出**意向车型识别与分类**
+（`intent_models` / `intent_model_category`，见 API 对接文档）。四档分类的判定
+规则由 `config/intent_categories.json` 提供（**不入库**，每套部署自行维护；
+模板见 `config/intent_categories.example.json`，默认 A=东风猛士系列、
+B=越野车、C=25-30万SUV、D=其他或无意向车型）：
+
+```bash
+# 首次部署：直接复制模板后按业务需要修改各档 rule 文本
+cp config/intent_categories.example.json config/intent_categories.json
+```
+
+**未配置时服务正常运行**：启动仅记录警告日志，`intent_model_category` 输出
+`null`，意向车型识别（`intent_models`）不受影响。生效方式同 3.2 节
+（`./config` 挂载 + 重启）。
+
+另注意：V1.8.0 为 `lead` 表新增 `intent_models`、`intent_model_category`
+两列，既有库升级时需执行一次幂等迁移脚本（scripts/ 不在镜像内，在装有项目
+依赖并能连库的机器上运行）：
+
+```bash
+python scripts/add_lead_intent_columns.py
+```
 
 
 ---

@@ -73,18 +73,27 @@ async def test_profile_no_screenshot_lowers_score():
     assert r["value_score"] < 77  # 基准 77 因截图缺失降分
 
 
+def _analysis_ctx(**overrides):
+    """user_lead_analysis Prompt 渲染的标准测试上下文（V1.8.0 起含分类标准）。"""
+    ctx = {
+        "user_evidence_json": "{}",
+        "grading_standard": "标准",
+        "our_models_summary": "- 方舟X7：售价 35-42 万元",
+        "intent_category_standard": "- A：东风猛士系列\n- B：越野车\n"
+                                    "- C：25-30万元价位的SUV\n- D：其他车型，或无意向车型"}
+    ctx.update(overrides)
+    return ctx
+
+
 def test_v162_user_analysis_prompt_three_stage_no_merge():
     """v1.6.2：四段流水线收敛为三阶段，合并增强并入基线，merge_boost 已删除。"""
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
-    # 三阶段流水线
+    text = render_prompt(config, _analysis_ctx())
+    # 三阶段流水线（V1.8.0：阶段二改为意向车型识别与分类，不调级）
     assert "三个阶段" in text
     assert "[阶段一：基线评级]" in text
-    assert "[阶段二：车型匹配调整]" in text
+    assert "[阶段二：意向车型识别与分类]" in text
     assert "[阶段三：主页画像有限上调]" in text
     # 合并增强已并入基线，不再是独立阶段
     assert "merge_boost" not in text
@@ -95,7 +104,6 @@ def test_v162_user_analysis_prompt_three_stage_no_merge():
     assert "水军" not in text
     # 保留规则回归锚点
     assert "baseline_grade" in text
-    assert "model_match_level" in text
     assert "只能上调" in text
     assert "homepage_profile" in text
     assert "我朋友想买" in text
@@ -106,10 +114,7 @@ def test_v161_analysis_prompt_readability_ban():
     """v1.6.1：面向人的文本字段禁用英文字段名/枚举值，analysis 五段业务化。"""
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     # 全局可读性禁令与正反示例
     assert "不得出现英文字段名" in text
     assert "is_car_owner 为 true" in text          # 反例（真实泄漏文本）
@@ -124,10 +129,7 @@ def test_v161_analysis_prompt_readability_ban():
 def test_v12_user_analysis_prompt_has_profile_rules():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     assert "方舟X7" in text          # 我方车型摘要仍注入
     assert "baseline_grade" in text  # 审计字段输出要求
     assert "homepage_profile" in text  # 画像注入位置说明
@@ -137,12 +139,9 @@ def test_v12_user_analysis_prompt_has_profile_rules():
 def test_v11_user_analysis_prompt_has_our_models_var():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     assert "方舟X7" in text
-    assert "匹配度" in text  # v2 追加的评级考量要求
+    assert "匹配度" in text  # analysis 第三段标题仍含匹配度表述
 
 
 @pytest.mark.asyncio
@@ -343,6 +342,27 @@ def test_v121_user_lead_result_rejects_invalid_match_level():
         UserLeadResult(lead_grade="B", model_match_level="not_a_level")
 
 
+def test_v18_user_lead_result_intent_fields_defaults():
+    """V1.8.0：意向车型识别与分类字段，默认空/未分类。"""
+    from app.schemas.skills import UserLeadResult
+    r = UserLeadResult(lead_grade="B")
+    assert r.intent_models == []
+    assert r.intent_model_category is None
+    r2 = UserLeadResult(lead_grade="B", intent_models=["坦克300"],
+                        intent_model_category="B",
+                        match_reason="多条评论表达坦克300 购买意向，属越野车归 B 档")
+    assert r2.intent_models == ["坦克300"]
+    assert r2.intent_model_category == "B"
+
+
+def test_v18_user_lead_result_rejects_invalid_intent_category():
+    import pytest as _pytest
+    from pydantic import ValidationError
+    from app.schemas.skills import UserLeadResult
+    with _pytest.raises(ValidationError):
+        UserLeadResult(lead_grade="B", intent_model_category="E")
+
+
 def test_v162_user_lead_result_audit_defaults():
     """V1.6.2：merge_boost 已删除；purchase_downgrade 保留兼容；新增复核审计字段。"""
     from app.schemas.skills import UserLeadResult
@@ -373,15 +393,17 @@ def test_v170_user_lead_result_review_tier_default():
 def test_v121_user_analysis_prompt_has_match_rules():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     assert "方舟X7" in text                # 我方车型摘要仍注入
-    assert "model_match_level" in text     # 匹配度审计字段输出要求
-    assert "match_adjustment" in text
-    assert "unrelated" in text             # 四档档位名
-    assert "下调两级" in text              # unrelated 调整幅度
+    # V1.8.0：阶段二只识别归档不调级，调级相关规则与字段已退役
+    assert "intent_models" in text         # 意向车型识别输出要求
+    assert "intent_model_category" in text  # 分类输出要求
+    assert "东风猛士系列" in text          # 分类标准注入
+    assert "不调整评级" in text            # 撤销调级的明示
+    assert "无意向车型" in text            # 无意向输出口径
+    assert "model_match_level" not in text
+    assert "match_adjustment" not in text
+    assert "下调两级" not in text
     assert "匹配度" in text                # analysis_text 五段之一
     assert "baseline_grade" in text        # V1.2 画像规则保留
     assert "只能上调" in text              # V1.2 画像规则保留
@@ -391,7 +413,7 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.4"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.0"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -401,8 +423,8 @@ def test_v170_pipeline_skill_version_bumped():
     from app.workflow.pipeline import (SKILL_VERSIONS, USER_ANALYSIS_SKILL,
                                        USER_REVIEW_ADVANCED_SKILL)
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.7.4"
-    assert SKILL_VERSIONS[USER_REVIEW_ADVANCED_SKILL] == "1.7.0"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.0"
+    assert SKILL_VERSIONS[USER_REVIEW_ADVANCED_SKILL] == "1.8.0"
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
 
@@ -410,17 +432,13 @@ def test_v170_pipeline_skill_version_bumped():
 def test_v13_user_analysis_prompt_has_label_rules():
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     assert "is_car_owner" in text
     assert "has_purchase_intent" in text
     assert "我朋友想买" in text          # 非本人意向规则
     assert "置换" in text                # 车主意向词例
-    # v4 三段流水线与审计字段原样保留
+    # 三段流水线与审计字段原样保留（V1.8.0：匹配调级字段退役）
     assert "baseline_grade" in text
-    assert "model_match_level" in text
     assert "只能上调" in text
 
 @pytest.mark.asyncio
@@ -488,18 +506,19 @@ async def test_v121_our_model_upgrade_maps_final_grade():
 
 
 def test_v121_unconfigured_summary_renders_unknown_rule():
-    """our_models.json 未配置：摘要为占位文本，v4 提示词渲染正常且含 unknown 跳过规则。"""
-    from app.matching.loader import build_our_models_summary
+    """our_models/分类标准未配置：占位文本注入，v1.8.0 提示词渲染正常且含 null 规则。"""
+    from app.matching.loader import (build_intent_category_standard,
+                                     build_our_models_summary)
     from app.skills.executor import load_skill_config, render_prompt
     summary = build_our_models_summary(None)
+    standard = build_intent_category_standard(None)
     assert "未配置" in summary
+    assert "未配置" in standard
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": summary})
+    text = render_prompt(config, _analysis_ctx(
+        our_models_summary=summary, intent_category_standard=standard))
     assert "未配置" in text
-    assert "unknown" in text
+    assert "null" in text   # 分类标准未配置 -> intent_model_category 输出 null
 
 
 @pytest.mark.asyncio
@@ -598,10 +617,7 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
     """V1.6.3：analysis_text 五段须有固定中文标题，供复核节点定位第五段。"""
     from app.skills.executor import load_skill_config, render_prompt
     config = load_skill_config("user_lead_analysis")
-    text = render_prompt(config, {
-        "user_evidence_json": "{}",
-        "grading_standard": "标准",
-        "our_models_summary": "- 方舟X7：售价 35-42 万元"})
+    text = render_prompt(config, _analysis_ctx())
     for heading in ("一、评论行为与用户身份",
                     "二、购车阶段评估",
                     "三、目标车型与我方车型匹配度",
@@ -609,10 +625,10 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
                     "五、总体评价"):
         assert heading in text
     assert "标题独占一行" in text
-    # 三阶段流水线：既有规则原样保留
+    # 三阶段流水线：既有规则原样保留（V1.8.0：阶段二只识别归档不调级，
+    # V1.7.4 的"最接近对比车型"约束随调级一并退役）
     assert "[阶段一：基线评级]" in text
-    assert "[阶段二：车型匹配调整]" in text
-    assert "与用户目标车型最接近" in text   # V1.7.4：阶段二须先选定最接近的对比车型
+    assert "[阶段二：意向车型识别与分类]" in text
     assert "[阶段三：主页画像有限上调]" in text
     assert "只能上调" in text
     assert "不得出现英文字段名" in text
@@ -621,9 +637,9 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
 def test_v163_analysis_config_uses_v163():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.7.4.txt"
-    assert config.prompt_version == "v1.7.4"
-    assert config.version == "1.7.4"
+    assert config.prompt_file == "user_lead_analysis_v1.8.0.txt"
+    assert config.prompt_version == "v1.8.0"
+    assert config.version == "1.8.0"
 
 def test_v163_review_result_revision_fields_default_none():
     """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""
@@ -750,3 +766,29 @@ async def test_v164_api_review_failure_fail_open():
     assert r["intent_level_code"] == "high"     # 初步 A 级保留（A→高）
     assert r["analysis"] == "分析原文"             # 文本保留
     assert r["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_v18_profile_result_carries_intent_fields():
+    """V1.8.0：LLM 输出的意向车型与分类经映射进入对外结果行。"""
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "s",
+        "intent_models": ["坦克300"], "intent_model_category": "B",
+        "match_reason": "多条评论表达坦克300 购买意向，越野车归 B 档",
+        "evidence_comment_ids": ["x"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u18", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "坦克300 评测",
+                             "comment_content": "坦克300 落地多少？想订一台",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_models"] == ["坦克300"]
+    assert r["intent_model_category"] == "B"
+    # 内部审计字段不进对外契约
+    assert "match_reason" not in r

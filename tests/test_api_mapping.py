@@ -261,3 +261,34 @@ def test_map_profile_no_value_still_carries_labels():
     assert r.has_value is False
     assert r.is_car_owner is True
     assert r.has_purchase_intent is False
+
+
+def test_map_profile_carries_intent_fields():
+    """V1.8.0：意向车型与分类透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         intent_models=["坦克300", "猛士M817"],
+                         intent_model_category="A")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.intent_models == ["坦克300", "猛士M817"]
+    assert r.intent_model_category == "A"
+
+
+def test_map_profile_no_value_still_carries_intent_fields():
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                         intent_models=["五菱宏光"],
+                         intent_model_category="D")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.intent_models == ["五菱宏光"]
+    assert r.intent_model_category == "D"
+
+
+def test_map_profile_intent_defaults_when_absent():
+    """历史/未识别输出：字段默认 [] 与 null，不报错。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.intent_models == []
+    assert r.intent_model_category is None

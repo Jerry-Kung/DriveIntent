@@ -81,6 +81,12 @@ class ProfileResult(BaseModel):
     # V1.3：独立分析标签；该条处理失败时为 null
     is_car_owner: bool | None = None
     has_purchase_intent: bool | None = None
+    # V1.8.0：意向车型识别与分类（阶段二只识别归档、不调级，供下游节点
+    # 自行决定如何使用）。intent_models 空数组=无意向车型；
+    # intent_model_category 为 A/B/C/D（服务端可配标准），
+    # 未配置标准/历史数据/该条处理失败时为 null。
+    intent_models: list[str] = []
+    intent_model_category: str | None = None
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis: str = ""

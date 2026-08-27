@@ -14,6 +14,8 @@ LEAD_JSON = json.dumps({
     "lead_summary": "用户询问落地价，意向明确",
     "purchase_stage": "交易准备阶段",
     "target_brands": ["坦克"], "target_models": ["坦克300"],
+    "intent_models": ["坦克300"], "intent_model_category": "B",
+    "match_reason": "反复询价坦克300，购买意向明确；越野车归 B 档",
     "core_needs": ["越野"], "main_concerns": ["落地价格"],
     "purchase_time": "近期", "usage_scenario": "越野出行",
     "recommended_entry_point": "从当地报价切入",
@@ -42,6 +44,9 @@ async def test_run_user_analysis_creates_lead(session):
     assert lead.evidence == [{"comment_id": str(c1.id),
                               "content": "落地多少钱"}]
     assert lead.confidence == 0.91
+    # V1.8.0：意向车型与分类落库
+    assert lead.intent_models == ["坦克300"]
+    assert lead.intent_model_category == "B"
 
     from app.models import AnalysisResult
     res = session.query(AnalysisResult).filter_by(

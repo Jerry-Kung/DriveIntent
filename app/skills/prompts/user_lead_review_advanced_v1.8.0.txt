@@ -28,11 +28,14 @@ $preliminary_result_json
    购车阶段评估、目标车型与我方车型匹配度、主页画像与调整结论、
    总体评价）：每一段的结论是否都能在用户证据中找到支撑？是否存在
    无中生有或张冠李戴？
-4. 逐字段核验上游结构化输出（target_models / core_needs /
-   main_concerns / purchase_time / evidence_comment_ids 等）：
-   每一项是否都有对应的证据评论或主页信息支撑？有没有幻觉？
-5. 沿审计推导链核验：baseline_grade 经 match_adjustment 与
-   profile_adjustment 走到 lead_grade 的每一步是否逻辑自洽？
+4. 逐字段核验上游结构化输出（target_models / intent_models /
+   intent_model_category / core_needs / main_concerns / purchase_time /
+   evidence_comment_ids 等）：每一项是否都有对应的证据评论或主页信息
+   支撑？有没有幻觉？意向车型识别（intent_models）是否混入了仅被提及、
+   并无购买意向的车型？分类（intent_model_category）是否与注入的分类
+   标准一致？（注意：意向车型识别与分类只作输出，不参与评级调整。）
+5. 沿审计推导链核验：baseline_grade 经 profile_adjustment
+   走到 lead_grade 的每一步是否逻辑自洽？
    是否存在证据不足却上调、或证据充分却低估的情形？
 6. 思考：综合该用户评论历史中所有可用信息，你是否会建议销售人员
    主动联系？优先级如何？

@@ -49,6 +49,8 @@
       <div><dt>价值分</dt><dd>{{ acct.value_score if acct.value_score is not none else "-" }}</dd></div>
       <div><dt>是否车主</dt><dd>{{ acct.is_car_owner }}</dd></div>
       <div><dt>购车意向</dt><dd>{{ acct.has_purchase_intent }}</dd></div>
+      <div><dt>意向车型</dt><dd>{{ acct.intent_models | join("、") if acct.intent_models else "-" }}</dd></div>
+      <div><dt>车型分类</dt><dd>{{ acct.intent_model_category or "-" }}</dd></div>
       <div><dt>处理时间</dt><dd>{{ acct.processed_at or "-" }}</dd></div>
     </dl>
     <h3>画像标签</h3>

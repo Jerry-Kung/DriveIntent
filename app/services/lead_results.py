@@ -94,6 +94,9 @@ def _to_row(job: ApiJob, idx: int, acct: dict) -> dict:
         "value_score": acct.get("value_score"),
         "is_car_owner": acct.get("is_car_owner"),
         "has_purchase_intent": acct.get("has_purchase_intent"),
+        # V1.8.0：意向车型识别与分类；历史数据无键，回退 []/None
+        "intent_models": acct.get("intent_models") or [],
+        "intent_model_category": acct.get("intent_model_category"),
         "profile_summary": acct.get("profile_summary") or "",
         "profile_tags": acct.get("profile_tags") or [],
         "analysis": acct.get("analysis") or "",
@@ -236,11 +239,14 @@ def export_lead_results_csv(session: Session, *, grade: str | None = None,
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["账号UID", "等级", "价值分", "车主", "购车意向",
+                     "意向车型", "车型分类",
                      "画像标签", "画像摘要", "分析文本", "处理时间", "作业ID"])
     for r in rows:
         writer.writerow([
             _csv_safe(r["account_uid"]), r["grade"], r["value_score"],
             r["is_car_owner"], r["has_purchase_intent"],
+            _csv_safe("/".join(r["intent_models"])),
+            r["intent_model_category"] or "",
             _csv_safe("/".join(r["profile_tags"])),
             _csv_safe(r["profile_summary"]), _csv_safe(r["analysis"]),
             r["processed_at"], r["job_id"]])

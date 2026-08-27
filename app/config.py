@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # 我方在售车型配置（Agent2 评级用）
     our_models_config_path: str = "config/our_models.json"
 
+    # V1.8.0 意向车型分类标准配置（定级阶段二识别分类用）
+    intent_categories_config_path: str = "config/intent_categories.json"
+
     # V1.4.4 截图暂存目录：base64 原始截图不入库，提交后暂存于此，
     # worker 认领时读回识图，作业终态删除。docker 部署须挂载到宿主机
     # （./data:/app/data），否则容器重启会丢失待处理作业的截图。

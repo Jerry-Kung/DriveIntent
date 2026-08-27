@@ -209,3 +209,30 @@ def test_export_escapes_formula(session):
     _job(session, "j1", t, [_acct("=cmd", code="high")])
     csv_text = export_lead_results_csv(session)
     assert "'=cmd" in csv_text
+
+
+def test_rows_carry_intent_fields(session):
+    """V1.8.0：意向车型与分类透出查询行；历史数据（无键）回退 []/None。"""
+    t = datetime(2026, 8, 27, 8, 0, 0)
+    acct = _acct("u1")
+    acct["intent_models"] = ["坦克300"]
+    acct["intent_model_category"] = "B"
+    _job(session, "j1", t, [acct, _acct("u2")])
+    rows = query_lead_results(session, page=1, size=20)["rows"]
+    assert rows[0]["intent_models"] == ["坦克300"]
+    assert rows[0]["intent_model_category"] == "B"
+    assert rows[1]["intent_models"] == []          # 历史数据回退
+    assert rows[1]["intent_model_category"] is None
+
+
+def test_export_csv_has_intent_columns(session):
+    t = datetime(2026, 8, 27, 8, 0, 0)
+    acct = _acct("u1")
+    acct["intent_models"] = ["坦克300", "猛士M817"]
+    acct["intent_model_category"] = "A"
+    _job(session, "j1", t, [acct])
+    csv_text = export_lead_results_csv(session)
+    head = csv_text.splitlines()[0]
+    assert "意向车型" in head and "车型分类" in head
+    assert "坦克300/猛士M817" in csv_text
+    assert ",A," in csv_text or csv_text.rstrip().endswith("A")

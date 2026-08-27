@@ -312,9 +312,9 @@ async def test_initial_b_downgraded_to_c_skips_polish(session):
 def test_v170_advanced_review_config():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_review_advanced")
-    assert config.version == "1.7.0"
-    assert config.prompt_file == "user_lead_review_advanced_v1.7.0.txt"
-    assert config.prompt_version == "v1.7.0"
+    assert config.version == "1.8.0"
+    assert config.prompt_file == "user_lead_review_advanced_v1.8.0.txt"
+    assert config.prompt_version == "v1.8.0"
     assert config.advanced is True
     assert config.multimodal is False
 
@@ -334,3 +334,9 @@ def test_v170_advanced_review_prompt_renders():
     assert "不得跨越" in text          # 单次复核不得跨一级
     assert "C 级不可再降" in text
     assert "推理" in text              # 全链路细致推导要求
+    # V1.8.0：阶段二不再调级，审计链去掉 match_adjustment，
+    # 增加意向车型识别与分类的核验
+    assert "match_adjustment" not in text
+    assert "profile_adjustment" in text
+    assert "intent_models" in text
+    assert "intent_model_category" in text

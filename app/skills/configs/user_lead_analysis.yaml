@@ -1,13 +1,14 @@
-﻿skill_id: user_lead_analysis
-version: "1.7.4"
+skill_id: user_lead_analysis
+version: "1.8.0"
 description: >
   基于用户完整评论历史、视频语境与统计特征评估购车意向，输出 H/A/B/C 定级、购车画像与销售建议，并独立判定账号级车主/购车意向两标签。
-  定级为三阶段流水线：评论基线（多条同质评论的累积强化已并入基线） → 在售车型匹配（四档调整，先选定与目标车型最接近的在售车型作比对基准） → 主页画像有限上调。
+  定级为三阶段流水线：评论基线（多条同质评论的累积强化已并入基线） → 意向车型识别与分类（V1.8.0 起只识别归档、不调整评级，分类标准可配置） → 主页画像有限上调。
+  阶段二输出 intent_models / intent_model_category，进对外 API 契约供下游应用节点决定如何使用。
   analysis_text 固定分五段、带段标题，供下游复核节点定位第五段“总体评价”。
   结果交由独立复核节点 user_lead_review 复核。
   无效用户（已购封顶、推广者、疑似营销号等）由前置过滤节点 user_lead_filter 处理。
 model:
   name: ""
   temperature: 0.1
-prompt_file: user_lead_analysis_v1.7.4.txt
-prompt_version: "v1.7.4"
+prompt_file: user_lead_analysis_v1.8.0.txt
+prompt_version: "v1.8.0"

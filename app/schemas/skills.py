@@ -114,12 +114,19 @@ class UserLeadResult(BaseModel):
     baseline_grade: str | None = None
     profile_adjustment: str = "none"  # none | upgraded
     adjustment_reason: str | None = None
-    # V1.2.1：在售车型匹配度审计字段（内部用，不进对外 API 契约）。
-    # 审计链条：baseline_grade →(match_adjustment)→ 中间等级
-    #          →(profile_adjustment)→ lead_grade
+    # V1.8.0：阶段二重构为"意向车型识别与分类"，不再调整评级。
+    # 审计链条：baseline_grade →(profile_adjustment)→ 中间等级 → 复核 → lead_grade
+    # intent_models：有购买意向的车型列表，空数组=无意向车型（进对外 API 契约）；
+    # intent_model_category：按可配置标准归档（A/B/C/D），未配置标准或
+    # 历史数据为 None（进对外 API 契约）；
+    # match_reason 自 V1.8.0 起语义为阶段二识别与分类依据。
+    intent_models: list[str] = []
+    intent_model_category: Literal["A", "B", "C", "D"] | None = None
+    # V1.2.1 引入的匹配调级审计字段。V1.8.0 起阶段二不再调级，LLM 不再输出
+    # 下两字段，仅为历史落库数据的读取兼容而保留默认值。
     model_match_level: Literal["our_model", "similar", "partial",
                                "unrelated", "unknown"] = "unknown"
-    match_adjustment: int = 0  # -2 ~ +1，负为降级、正为上调
+    match_adjustment: int = 0  # V1.8.0 起恒为 0（历史数据可为 -2 ~ +1）
     match_reason: str | None = None
     # V1.3：账号级独立标签，综合全部历史评论与主页画像判定。
     # 无评论历史（has_value=false 空账号）时保持默认 false。

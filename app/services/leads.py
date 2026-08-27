@@ -20,6 +20,8 @@ def upsert_lead(session: Session, user_id: int, result: UserLeadResult,
     lead.purchase_stage = result.purchase_stage
     lead.target_brands = result.target_brands
     lead.target_models = result.target_models
+    lead.intent_models = result.intent_models
+    lead.intent_model_category = result.intent_model_category
     lead.core_needs = result.core_needs
     lead.main_concerns = result.main_concerns
     lead.purchase_time = result.purchase_time
@@ -196,6 +198,8 @@ def lead_to_dict(session: Session, lead: Lead,
         "platform": user.platform if user else "", "grade": lead.grade,
         "target_brands": lead.target_brands or [],
         "target_models": lead.target_models or [],
+        "intent_models": lead.intent_models or [],
+        "intent_model_category": lead.intent_model_category,
         "summary": lead.summary, "purchase_stage": lead.purchase_stage,
         "core_needs": lead.core_needs or [],
         "main_concerns": lead.main_concerns or [],

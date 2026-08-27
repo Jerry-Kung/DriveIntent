@@ -5,7 +5,9 @@ from app.api.mapping import map_profile_result, now_iso
 from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway, _CURRENT_ACCOUNT
-from app.matching.loader import build_our_models_summary, load_our_models
+from app.matching.loader import (build_intent_category_standard,
+                                 build_our_models_summary,
+                                 load_intent_categories, load_our_models)
 from app.schemas.skills import UserLeadResult
 from app.skills.analysis_polish import apply_polish
 from app.skills.executor import extract_json, load_skill_config, render_prompt
@@ -65,12 +67,16 @@ def _build_evidence(account: AccountObject, vision_text: str) -> dict:
 
 
 async def analyze_account(executor, account: AccountObject, vision_text: str,
-                          our_models_summary: str) -> UserLeadResult:
+                          our_models_summary: str,
+                          intent_category_standard: str = "") -> UserLeadResult:
     evidence = _build_evidence(account, vision_text)
     ctx = {
         "user_evidence_json": json.dumps(evidence, ensure_ascii=False),
         "grading_standard": GRADING_STANDARD,
         "our_models_summary": our_models_summary,
+        "intent_category_standard": (
+            intent_category_standard
+            or build_intent_category_standard(None)),
     }
     return await executor.run(USER_ANALYSIS_SKILL, ctx, UserLeadResult)
 
@@ -92,8 +98,11 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     results: list[dict] = []
     ts = now_iso()
     done = 0
-    # 我方车型摘要与账号无关，整批只加载/构建一次，避免每账号重复加载与告警刷屏
+    # 我方车型摘要与分类标准与账号无关，整批只加载/构建一次，
+    # 避免每账号重复加载与告警刷屏
     our_models_summary = build_our_models_summary(load_our_models())
+    intent_category_standard = build_intent_category_standard(
+        load_intent_categories())
     for idx, account in enumerate(request.accounts):
         has_comments = len(account.comment_history) > 0
         # V1.7.1：本账号处理期间写入 account_uid 上下文，使 LLM 日志精确
@@ -117,7 +126,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                     out = build_filtered_lead_result(filt)
                 else:
                     out = await analyze_account(
-                        executor, account, vision_text, our_models_summary)
+                        executor, account, vision_text, our_models_summary,
+                        intent_category_standard)
                     # V1.6.4：API 路径接入复核+润色，与 V0 流水线对齐
                     await apply_review(
                         executor, json.dumps(evidence, ensure_ascii=False),
@@ -137,7 +147,9 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "account_uid": account.account_uid, "has_value": False,
                 "intent_level": None, "intent_level_code": None,
                 "value_score": None, "is_car_owner": None,
-                "has_purchase_intent": None, "profile_tags": [],
+                "has_purchase_intent": None,
+                "intent_models": [], "intent_model_category": None,
+                "profile_tags": [],
                 "profile_summary": "", "analysis": "", "processed_at": ts,
                 "error": str(e)[:500]})
             if grade_sink is not None:

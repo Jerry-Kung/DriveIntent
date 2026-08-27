@@ -22,3 +22,15 @@ class OurModelsConfig(BaseModel):
     version: str = "1.0"
     updated_at: str = ""
     models: list[OurModel] = []
+
+
+class IntentCategory(BaseModel):
+    """V1.8.0 意向车型分类档位：code 为档位代码（A/B/C/D），rule 为判定规则文本。"""
+    code: str
+    rule: str
+
+
+class IntentCategoriesConfig(BaseModel):
+    version: str = "1.0"
+    updated_at: str = ""
+    categories: list[IntentCategory] = []
