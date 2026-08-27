@@ -53,6 +53,21 @@ def test_detail_page_renders(session):
     assert "测试昵称" in html
 
 
+def test_detail_page_shows_entry_point(session):
+    """详情页展示销售开场白；历史数据（无键）回退 "-"。"""
+    acct = _acct("u1", code="high")
+    acct["recommended_entry_point"] = "您关注的坦克300与我们的猛士M817同为硬派越野"
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0), [acct])
+    client = _client(session)
+    html = client.get("/leads/j1/0").text
+    assert "销售开场白" in html
+    assert "您关注的坦克300与我们的猛士M817同为硬派越野" in html
+
+    _job(session, "j2", datetime(2026, 8, 14, 9, 0, 0), [_acct("u2")])
+    html2 = client.get("/leads/j2/0").text
+    assert "销售开场白" in html2  # 无键不报错，栏目仍在
+
+
 def test_detail_page_shows_llm_calls(session):
     t = datetime(2026, 8, 14, 8, 0, 0)
     _job(session, "j1", t, [_acct("u1")])

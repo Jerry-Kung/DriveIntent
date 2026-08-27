@@ -53,6 +53,8 @@
       <div><dt>车型分类</dt><dd>{{ acct.intent_model_category or "-" }}</dd></div>
       <div><dt>处理时间</dt><dd>{{ acct.processed_at or "-" }}</dd></div>
     </dl>
+    <h3>销售开场白</h3>
+    <p class="summary">{{ acct.recommended_entry_point or "-" }}</p>
     <h3>画像标签</h3>
     <p>{{ acct.profile_tags | join("、") }}</p>
     <h3>画像摘要</h3>
