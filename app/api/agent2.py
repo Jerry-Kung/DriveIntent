@@ -149,6 +149,7 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "value_score": None, "is_car_owner": None,
                 "has_purchase_intent": None,
                 "intent_models": [], "intent_model_category": None,
+                "recommended_entry_point": None,
                 "profile_tags": [],
                 "profile_summary": "", "analysis": "", "processed_at": ts,
                 "error": str(e)[:500]})

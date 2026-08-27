@@ -292,3 +292,27 @@ def test_map_profile_intent_defaults_when_absent():
                            processed_at="t")
     assert r.intent_models == []
     assert r.intent_model_category is None
+
+
+def test_map_profile_carries_entry_point():
+    """V1.8.1：销售开场白透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         recommended_entry_point="您关注的坦克300与我们的猛士M817同为硬派越野")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.recommended_entry_point == "您关注的坦克300与我们的猛士M817同为硬派越野"
+
+    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                          recommended_entry_point="开场白")
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is False
+    assert r2.recommended_entry_point == "开场白"
+
+
+def test_map_profile_entry_point_default_null():
+    """历史数据/LLM 未输出：默认 null，不报错。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.recommended_entry_point is None

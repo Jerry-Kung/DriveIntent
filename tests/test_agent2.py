@@ -792,3 +792,27 @@ async def test_v18_profile_result_carries_intent_fields():
     assert r["intent_model_category"] == "B"
     # 内部审计字段不进对外契约
     assert "match_reason" not in r
+
+
+@pytest.mark.asyncio
+async def test_v181_profile_result_carries_entry_point():
+    """V1.8.1：定级输出的销售开场白经映射进入对外结果行。"""
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "s",
+        "recommended_entry_point": "您在对比坦克300，我们的猛士M817同为硬派越野",
+        "evidence_comment_ids": ["x"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"},
+        ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u19", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "坦克300 评测",
+                             "comment_content": "坦克300 落地多少？想订一台",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["recommended_entry_point"] == (
+        "您在对比坦克300，我们的猛士M817同为硬派越野")

@@ -87,6 +87,9 @@ class ProfileResult(BaseModel):
     # 未配置标准/历史数据/该条处理失败时为 null。
     intent_models: list[str] = []
     intent_model_category: str | None = None
+    # V1.8.1：定级节点输出的销售开场白建议，透出给下游辅助制定销售策略；
+    # LLM 未输出/历史数据/该条处理失败时为 null。
+    recommended_entry_point: str | None = None
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis: str = ""
