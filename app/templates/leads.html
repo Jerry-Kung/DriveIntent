@@ -34,21 +34,21 @@
       <table class="leads-table">
         <colgroup>
           <col style="width:16%"><col style="width:5%">
-          <col style="width:6%"><col style="width:5%">
-          <col style="width:6%"><col style="width:12%">
-          <col style="width:30%">
+          <col style="width:5%"><col style="width:6%">
+          <col style="width:13%"><col style="width:6%">
+          <col style="width:29%">
           <col style="width:11%"><col style="width:5%">
         </colgroup>
-        <tr><th>账号 UID</th><th>等级</th><th>价值分</th><th>车主</th>
-            <th>购车意向</th><th>意向车型</th><th>画像摘要</th><th>处理时间</th><th>详情</th></tr>
+        <tr><th>账号 UID</th><th>等级</th><th>车主</th>
+            <th>购车意向</th><th>意向车型</th><th>车型分类</th><th>画像摘要</th><th>处理时间</th><th>详情</th></tr>
         {% for r in rows %}
         <tr>
           <td class="uid">{{ r.account_uid }}</td>
           <td><span class="grade grade-{{ r.grade }}">{{ r.grade }}</span></td>
-          <td class="num">{{ r.value_score if r.value_score is not none else "-" }}</td>
           <td>{{ "是" if r.is_car_owner else ("否" if r.is_car_owner is not none else "-") }}</td>
           <td>{{ "是" if r.has_purchase_intent else ("否" if r.has_purchase_intent is not none else "-") }}</td>
-          <td>{{ r.intent_models | join("、") or "-" }}{% if r.intent_model_category %}（{{ r.intent_model_category }}档）{% endif %}</td>
+          <td>{{ r.intent_models | join("、") or "-" }}</td>
+          <td>{{ r.intent_model_category or "-" }}</td>
           <td>{{ r.profile_summary }}</td>
           <td class="num">{{ r.processed_at }}</td>
           <td><a href="/leads/{{ r.job_id }}/{{ r.index }}">查看</a></td>
