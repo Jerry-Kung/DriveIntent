@@ -45,6 +45,8 @@ with conn:
             if column_exists(cur, table, column):
                 print(f"[SKIP] {table}.{column} 已存在")
                 continue
-            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            # lead 是 MySQL 8.0 保留关键字（窗口函数 LEAD），标识符须反引号包裹
+            cur.execute(
+                f"ALTER TABLE `{table}` ADD COLUMN `{column}` {col_type}")
             conn.commit()
             print(f"[OK]  {table}.{column} 已添加")
