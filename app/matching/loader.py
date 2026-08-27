@@ -88,3 +88,15 @@ def build_intent_category_standard(
     if config is None or not config.categories:
         return "（未配置意向车型分类标准，intent_model_category 输出 null）"
     return "\n".join(f"- {c.code}：{c.rule}" for c in config.categories)
+
+
+def intent_category_label_map(
+        config: IntentCategoriesConfig | None) -> dict[str, str]:
+    """码值 → 对外中文正式内容映射（用于 API 返回；库内仍存 A/B/C/D）。
+
+    未配置标准/无法解析返回空映射（调用方对未知码值原样透传或置 null）。
+    label 缺省回退 code 本身，保证仅有 rule 的旧配置也能正常映射。
+    """
+    if config is None or not config.categories:
+        return {}
+    return {c.code: (c.label or c.code) for c in config.categories}

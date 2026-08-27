@@ -7,6 +7,7 @@ from app.api.jobs import create_job, get_job
 from app.api.schemas import CommentScreeningRequest, ProfileAnalysisRequest
 from app.config import settings
 from app.db import SessionLocal
+from app.matching.loader import intent_category_label_map, load_intent_categories
 
 _TZ8 = timezone(timedelta(hours=8))
 
@@ -62,16 +63,41 @@ def submit_profile_analysis(request: ProfileAnalysisRequest,
             "type": job.job_type}
 
 
+def _apply_intent_category_labels(result: dict | None) -> dict | None:
+    """对外返回前，把 profile_analysis 结果里的 intent_model_category 码值
+    （A/B/C/D）按 config 转成中文正式内容。仅改返回数据，不改库——库内
+    api_job.result 与 lead 表仍存码值，供内部审计/统计使用。
+
+    仅处理 profile_analysis 结果；其他 job_type 原样透传。
+    """
+    if not isinstance(result, dict):
+        return result
+    results = result.get("results")
+    if not isinstance(results, list):
+        return result
+    label_map = intent_category_label_map(load_intent_categories())
+    for acct in results:
+        if not isinstance(acct, dict):
+            continue
+        code = acct.get("intent_model_category")
+        if code is None:
+            continue
+        acct["intent_model_category"] = label_map.get(code, code)
+    return result
+
+
 @api_router.get("/api/v1/jobs/{job_id}",
                 dependencies=[Depends(require_api_key)])
 def get_job_status(job_id: str, db=Depends(get_db)):
     job = get_job(db, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="作业不存在")
+    # 轮询响应是对外契约：返回前对 intent_model_category 做码值→中文映射
     return {
         "job_id": job.id, "type": job.job_type, "status": job.status,
         "progress": {"total": job.progress_total, "done": job.progress_done},
-        "result": job.result, "error": job.error,
+        "result": _apply_intent_category_labels(job.result),
+        "error": job.error,
         "created_at": (job.created_at.replace(tzinfo=timezone.utc)
                        .astimezone(_TZ8).isoformat()
                        if job.created_at else None),

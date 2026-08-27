@@ -25,8 +25,12 @@ class OurModelsConfig(BaseModel):
 
 
 class IntentCategory(BaseModel):
-    """V1.8.0 意向车型分类档位：code 为档位代码（A/B/C/D），rule 为判定规则文本。"""
+    """V1.8.0 意向车型分类档位：code 为档位代码（A/B/C/D），rule 为判定规则文本。
+
+    label 为对外返回的正式中文内容（A → 东风猛士系列）；缺省回退 code 本身。
+    """
     code: str
+    label: str = ""
     rule: str
 
 

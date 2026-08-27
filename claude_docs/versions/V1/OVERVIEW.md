@@ -1,11 +1,11 @@
 # V1 版本总览
 
-> 最后更新：2026-08-27（随 V1.8.0 发布）
+> 最后更新：2026-08-27（随 V1.8.2 发布）
 
 ## 能力快照
 
 - **定位**：可通过 docker compose 独立部署的后端微服务，对外提供两个异步 Agent API（评论价值初筛 / 账号画像精筛），同时保留 V0 的 8000 测试链路。
-- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。V1.7.3 起 Agent2 等级多对一映射：H/A→high、B→medium、C→low，分数区间随之调整（见对接文档等级表）。V1.8.0 起 Agent2 结果新增 `intent_models`（意向车型）/ `intent_model_category`（四档分类，标准可配）两字段（纯增量）。
+- **对外契约**：`POST /api/v1/comment-screening`、`POST /api/v1/profile-analysis` 提交作业，`GET /api/v1/jobs/{job_id}` 轮询结果；静态 API Key 认证（`Authorization: Bearer`）；`GET /health` 探活。对接文档：`docs/DriveIntent-V1-API对接文档.md`（当前 1.3 版）。V1.7.3 起 Agent2 等级多对一映射：H/A→high、B→medium、C→low，分数区间随之调整（见对接文档等级表）。V1.8.0 起 Agent2 结果新增 `intent_models`（意向车型）/ `intent_model_category`（四档分类，标准可配）两字段；V1.8.2 起 `intent_model_category` 对外返回中文正式内容（配置 `label`：东风猛士系列/越野车/25-30万SUV/其他），库内仍存码值 A/B/C/D 供内部统计。
 - **核心能力现状（V1.6 后）**：
   - **Agent1（评论初筛）**：filter_type 分类（`genuine_user` / `bot_spam` / `marketing_account` / `noise` / `off_topic` / `no_purchase_intent`）；评论级 `is_car_owner` / `has_purchase_intent` 两独立标签；"有购车意向必过筛"等硬规则由代码层 `resolve_filter_type()` 确定性合成；非本人意向（替他人问询/怂恿/营销口吻）识别降档。
   - **Agent2（账号精筛）**：定级前先过"无效用户过滤"节点（独立 LLM 调用，V1.6）——已购无新购计划/推广他人/仅替他人问询/疑似营销号/汽车从业者/其他六类命中直接定 C 不进定级，fail-open 放行；账号级两标签 + H/A/B/C 定级三阶段流水线（V1.6.2，V1.8.0 重构阶段二）——评论基线（多条同质评论累积强化已并入基线）→ 意向车型识别与分类（V1.8.0：只识别归档、**不调整评级**；识别有购买意向的车型 `intent_models`，按可配置四档标准输出 `intent_model_category`，标准配置 `config/intent_categories.json`；V1.2.1 引入的匹配调级与 V1.7.4 的对比基准约束随之退役，如何用分类调整优先级交下游决定）→ 主页截图结构化画像有限上调（作用于基线评级）；定级后接分级复核（V1.7.0）——初始 C 不审查不润色直接输出、初始 B 走普通模型审查（`user_lead_review`，V1.6.2/1.6.3 销售视角复核 + 单次至多改一级、C 为下限、fail-open）、初始 A/H 走高级模型审查（`user_lead_review_advanced`，逐段核验五段论证与推理链，模型路由到 `LLM_MODEL_ADVANCED` 并强制深度思考）；初始 B 经普通审查 upgrade 到 A/H 时追加一次高级终审。复核改级时一并修订对外叙述（V1.6.3）——按段标题锚点替换 `analysis_text` 第五段"总体评价"与 `lead_summary`，前四段事实陈述逐字保留，锚点缺失退化为文末追加。复核后统一接 analysis 润色节点 `user_analysis_polish`（V1.6.4，两路径同接，最终定级 C 跳过）——针对最终定级重写 analysis_text / lead_summary / profile_summary，清除英文字段泄漏、消除叙述与定级矛盾，只改文本不改级，fail-open 保留原文；复核节点同版起接入对外 API 路径（此前仅 V0 流水线有复核）。**等级对外映射（V1.7.3）**：H/A→high、B→medium、C→low，各内部等级保留原 base/floor（C 新增 45/40）；由于外部 code 已多对一，`api_job.lead_grades` 落每账号真实 HABC 供内部审计读取（`lead_results.py`），审计仍以 HABC 四档呈现，旧数据回退按 code 反推。
@@ -58,6 +58,7 @@
 | V1.7.3 | 2026-08-24 | 定级等级对外映射统一：H/A→high、B→medium、C→low；各内部等级保留原 base/floor（C 新增 45/40）；新增 `api_job.lead_grades` 列落真实 HABC 供内部审计，不再靠反推 code | [design](V1.7/v1.7.3-design.md) |
 | V1.7.4 | 2026-08-24 | 阶段二匹配基准约束：先用与用户目标车型最接近的在售车型作对比车型，修复多款在售车型并存时选错参考车导致误判无关而错误降级，契约不变 | [design](V1.7/v1.7.4-design.md) |
 | V1.8.0 | 2026-08-27 | 阶段二重构：意向车型识别与四档分类（标准可配 `intent_categories.json`），撤销匹配调级（V1.2.1 调级与 V1.7.4 基准约束退役）；`intent_models` / `intent_model_category` 落库（lead 表新两列 + api_job 结果 JSON）并新增对外 API 字段（纯增量） | [design](V1.8/design.md) / [plan](V1.8/plan.md) |
+| V1.8.2 | 2026-08-27 | 精筛定级接口 `intent_model_category` 对外改返回中文正式内容（配置 `label`：东风猛士系列/越野车/25-30万SUV/其他），库内仍存码值 A/B/C/D 供内部统计，仅返回层映射 | [design](V1.8/v1.8.2-design.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次

@@ -23,7 +23,13 @@ def client(monkeypatch):
     app = FastAPI()
     app.include_router(api_router)
     app.dependency_overrides[get_db] = lambda: Session()
+    app.state.test_factory = Session
     return TestClient(app)
+
+
+@pytest.fixture()
+def session(client):
+    yield client.app.state.test_factory()
 
 
 def test_health_no_auth(client):
@@ -54,3 +60,41 @@ def test_bad_payload_422(client):
                     json={"comments": [{"comment_id": "x"}]},
                     headers={"Authorization": "Bearer secret"})
     assert r.status_code == 422
+
+
+def test_job_result_maps_intent_category_to_label(client, session, monkeypatch):
+    """对外轮询把 intent_model_category 码值映射为中文，库内仍存码值。"""
+    from app.api.jobs import create_job, finish_job, get_job
+    from app.config import settings
+    monkeypatch.setattr(settings, "intent_categories_config_path",
+                        "config/intent_categories.json")
+    job = create_job(session, "profile_analysis", {"accounts": []}, total=1)
+    # 模拟 worker 落库：result 内存码值
+    finish_job(session, job, status="success", error=None,
+               result={"results": [{"account_uid": "u1", "has_value": True,
+                                    "intent_models": ["坦克300"],
+                                    "intent_model_category": "B"}]})
+    body = client.get(f"/api/v1/jobs/{job.id}",
+                      headers={"Authorization": "Bearer secret"}).json()
+    # 对外返回中文正式内容
+    assert body["result"]["results"][0]["intent_model_category"] == "越野车"
+    # 库内仍是码值 B，供内部统计
+    assert get_job(session, job.id).result["results"][0][
+        "intent_model_category"] == "B"
+
+
+def test_job_result_unknown_category_passthrough(client, session, monkeypatch):
+    """配置外码值原样透传；null 保持 null。"""
+    from app.api.jobs import create_job, finish_job
+    from app.config import settings
+    monkeypatch.setattr(settings, "intent_categories_config_path",
+                        "config/intent_categories.json")
+    job = create_job(session, "profile_analysis", {"accounts": []}, total=1)
+    finish_job(session, job, status="success", error=None,
+               result={"results": [
+                   {"account_uid": "u2", "intent_model_category": "X"},
+                   {"account_uid": "u3", "intent_model_category": None}]})
+    body = client.get(f"/api/v1/jobs/{job.id}",
+                      headers={"Authorization": "Bearer secret"}).json()
+    assert body["result"]["results"][0]["intent_model_category"] == "X"
+    assert body["result"]["results"][1]["intent_model_category"] is None
