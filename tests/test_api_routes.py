@@ -62,12 +62,26 @@ def test_bad_payload_422(client):
     assert r.status_code == 422
 
 
-def test_job_result_maps_intent_category_to_label(client, session, monkeypatch):
+def _write_cat_config(tmp_path):
+    """V1.8.3：label 测试自建 tmp 配置，与未跟踪的实盘 config 解耦。"""
+    import json
+    cfg = {"version": "1.0", "categories": [
+        {"code": "A", "label": "东风猛士系列", "rule": "东风猛士系列车型"},
+        {"code": "B", "label": "越野车", "rule": "越野车"},
+        {"code": "C", "label": "25-30万SUV", "rule": "25-30万元价位的SUV"},
+        {"code": "D", "label": "其他", "rule": "其他车型，或无意向车型"}]}
+    p = tmp_path / "intent_categories.json"
+    p.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    return str(p)
+
+
+def test_job_result_maps_intent_category_to_label(client, session, monkeypatch,
+                                                  tmp_path):
     """对外轮询把 intent_model_category 码值映射为中文，库内仍存码值。"""
     from app.api.jobs import create_job, finish_job, get_job
     from app.config import settings
     monkeypatch.setattr(settings, "intent_categories_config_path",
-                        "config/intent_categories.json")
+                        _write_cat_config(tmp_path))
     job = create_job(session, "profile_analysis", {"accounts": []}, total=1)
     # 模拟 worker 落库：result 内存码值
     finish_job(session, job, status="success", error=None,
@@ -83,12 +97,13 @@ def test_job_result_maps_intent_category_to_label(client, session, monkeypatch):
         "intent_model_category"] == "B"
 
 
-def test_job_result_unknown_category_passthrough(client, session, monkeypatch):
+def test_job_result_unknown_category_passthrough(client, session, monkeypatch,
+                                                 tmp_path):
     """配置外码值原样透传；null 保持 null。"""
     from app.api.jobs import create_job, finish_job
     from app.config import settings
     monkeypatch.setattr(settings, "intent_categories_config_path",
-                        "config/intent_categories.json")
+                        _write_cat_config(tmp_path))
     job = create_job(session, "profile_analysis", {"accounts": []}, total=1)
     finish_job(session, job, status="success", error=None,
                result={"results": [

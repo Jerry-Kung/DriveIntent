@@ -4,8 +4,11 @@ from pydantic import BaseModel, field_validator
 
 
 class VideoContextResult(BaseModel):
-    brand: str | None = None
-    model: str | None = None
+    # V1.8.3：brand/model/vehicle_category/powertrain 由单值改为数组——
+    # 跨品牌对比类视频本就涉及多款车，强约束单值曾致 LLM 输出数组时
+    # 整单作业校验失败。键名不变，下游均整段 JSON 透传无结构化取值。
+    brand: list[str] = []
+    model: list[str] = []
     content_type: str | None = None
     main_topics: list[str] = []
     target_audience: str | None = None
@@ -15,9 +18,22 @@ class VideoContextResult(BaseModel):
     # V1.1：车型客观属性，用于我方车型匹配与意向降级（LLM 常识估算，缺失为 None）
     price_range_min: int | None = None
     price_range_max: int | None = None
-    vehicle_category: str | None = None
-    powertrain: str | None = None
+    vehicle_category: list[str] = []
+    powertrain: list[str] = []
     use_case: list[str] = []
+
+    @field_validator("brand", "model", "vehicle_category", "powertrain",
+                     mode="before")
+    @classmethod
+    def _coerce_to_str_list(cls, v):
+        """V1.8.3 四字段数组化的兼容归一：历史单值输出/落库数据包成
+        单元素数组，None 与空白串归一为空数组；list 透传交 Pydantic
+        逐元素校验；其余类型原样返回交由 Pydantic 报错。"""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v] if v.strip() else []
+        return v
 
     @field_validator("price_range_min", "price_range_max", mode="before")
     @classmethod

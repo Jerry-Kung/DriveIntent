@@ -408,12 +408,16 @@ def test_v121_user_analysis_prompt_has_match_rules():
     assert "baseline_grade" in text        # V1.2 画像规则保留
     assert "只能上调" in text              # V1.2 画像规则保留
     assert "homepage_profile" in text      # V1.2 画像注入说明保留
+    # V1.8.3：视频语境多车型仅为背景信息，不得直接并入 intent_models
+    assert "背景信息" in text
+    # V1.8.3：多意向车型取最优档的显式例子
+    assert "任一" in text
 
 
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.0"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.3"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -423,7 +427,7 @@ def test_v170_pipeline_skill_version_bumped():
     from app.workflow.pipeline import (SKILL_VERSIONS, USER_ANALYSIS_SKILL,
                                        USER_REVIEW_ADVANCED_SKILL)
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.0"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.3"
     assert SKILL_VERSIONS[USER_REVIEW_ADVANCED_SKILL] == "1.8.0"
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -637,9 +641,9 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
 def test_v163_analysis_config_uses_v163():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.8.0.txt"
-    assert config.prompt_version == "v1.8.0"
-    assert config.version == "1.8.0"
+    assert config.prompt_file == "user_lead_analysis_v1.8.3.txt"
+    assert config.prompt_version == "v1.8.3"
+    assert config.version == "1.8.3"
 
 def test_v163_review_result_revision_fields_default_none():
     """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""
@@ -791,6 +795,32 @@ async def test_v18_profile_result_carries_intent_fields():
     assert r["intent_models"] == ["坦克300"]
     assert r["intent_model_category"] == "B"
     # 内部审计字段不进对外契约
+    assert "match_reason" not in r
+
+
+@pytest.mark.asyncio
+async def test_v183_multi_intent_models_end_to_end():
+    """V1.8.3：多款意向车型按数组多值透传对外，分类取最优档（任一命中即整体定档）。"""
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "s",
+        "intent_models": ["坦克300", "豹5"], "intent_model_category": "B",
+        "match_reason": "两款均有本人意向证据；豹5 命中越野车 B 档，整体取 B",
+        "evidence_comment_ids": ["x"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"},
+        ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u183", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "坦克300 vs 豹5 怎么选",
+                             "comment_content": "这两台都在纠结，哪个落地便宜？",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["intent_models"] == ["坦克300", "豹5"]
+    assert r["intent_model_category"] == "B"
     assert "match_reason" not in r
 
 

@@ -166,20 +166,20 @@ async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
     assert calls["n"] == 3
 
 
-def test_v11_video_context_config_uses_v2():
+def test_v183_video_context_config_uses_v183():
     from app.skills.executor import load_skill_config
     config = load_skill_config("video_context_analysis")
-    assert config.prompt_file == "video_context_analysis_v2.txt"
-    assert config.prompt_version == "v2"
-    assert config.version == "1.1"
+    assert config.prompt_file == "video_context_analysis_v1.8.3.txt"
+    assert config.prompt_version == "v1.8.3"
+    assert config.version == "1.8.3"
 
 
-def test_v13_screening_config_uses_v3():
+def test_v183_screening_config_uses_v183():
     from app.skills.executor import load_skill_config
     config = load_skill_config("comment_lead_screening")
-    assert config.prompt_file == "comment_lead_screening_v1.7.2.txt"
-    assert config.prompt_version == "v1.7.2"
-    assert config.version == "1.7.2"
+    assert config.prompt_file == "comment_lead_screening_v1.8.3.txt"
+    assert config.prompt_version == "v1.8.3"
+    assert config.version == "1.8.3"
 
 
 def test_v11_video_context_prompt_renders_with_new_fields():
@@ -189,6 +189,9 @@ def test_v11_video_context_prompt_renders_with_new_fields():
     assert "price_range_min" in text
     assert "vehicle_category" in text
     assert "use_case" in text
+    # V1.8.3：四字段数组化措辞
+    assert "数组" in text
+    assert "所有" in text
 
 
 def test_v13_screening_prompt_renders_with_label_fields():
@@ -209,8 +212,11 @@ def test_v13_screening_prompt_renders_with_label_fields():
     assert "我朋友想买" in text
     # no_purchase_intent 由代码合成，不得出现在 LLM 输出模板中
     assert "no_purchase_intent" not in text
+    # V1.8.3：视频语境品牌/车型改数组后，target_brand/model 明确单值选取
+    assert "单个字符串" in text
+    assert "禁止输出数组" in text
 
 
 def test_v13_pipeline_screening_version_bumped():
     from app.workflow.pipeline import COMMENT_SCREENING_SKILL, SKILL_VERSIONS
-    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.7.2"
+    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.8.3"

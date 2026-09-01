@@ -1,10 +1,11 @@
 skill_id: video_context_analysis
-version: "1.1"
+version: "1.8.3"
 description: >
   理解短视频语境：识别品牌车型、内容类型、主要话题、受众、竞品与商业属性，
   并估算车型价位/品类/动力/用途等客观属性，供我方车型匹配降级使用。
+  V1.8.3 起 brand/model/vehicle_category/powertrain 输出数组，支持多车型对比视频。
 model:
   name: ""          # 空则使用 .env 的 LLM_MODEL
   temperature: 0.1
-prompt_file: video_context_analysis_v2.txt
-prompt_version: "v2"
+prompt_file: video_context_analysis_v1.8.3.txt
+prompt_version: "v1.8.3"

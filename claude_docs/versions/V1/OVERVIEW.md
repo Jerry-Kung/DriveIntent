@@ -1,6 +1,6 @@
 # V1 版本总览
 
-> 最后更新：2026-08-27（随 V1.8.2 发布）
+> 最后更新：2026-09-01（随 V1.8.3 发布）
 
 ## 能力快照
 
@@ -19,9 +19,9 @@
 
 | Skill | config version | prompt |
 |---|---|---|
-| comment_lead_screening | 1.7.2 | v1.7.2 |
-| video_context_analysis | 1.1 | v2 |
-| user_lead_analysis | 1.8.0 | v1.8.0 |
+| comment_lead_screening | 1.8.3 | v1.8.3 |
+| video_context_analysis | 1.8.3 | v1.8.3 |
+| user_lead_analysis | 1.8.3 | v1.8.3 |
 | user_lead_review | 1.6.3 | v1.6.3 |
 | user_lead_review_advanced | 1.8.0 | v1.8.0 |
 | user_lead_filter | 1.6.1 | v1.6.1 |
@@ -59,6 +59,7 @@
 | V1.7.4 | 2026-08-24 | 阶段二匹配基准约束：先用与用户目标车型最接近的在售车型作对比车型，修复多款在售车型并存时选错参考车导致误判无关而错误降级，契约不变 | [design](V1.7/v1.7.4-design.md) |
 | V1.8.0 | 2026-08-27 | 阶段二重构：意向车型识别与四档分类（标准可配 `intent_categories.json`），撤销匹配调级（V1.2.1 调级与 V1.7.4 基准约束退役）；`intent_models` / `intent_model_category` 落库（lead 表新两列 + api_job 结果 JSON）并新增对外 API 字段（纯增量） | [design](V1.8/design.md) / [plan](V1.8/plan.md) |
 | V1.8.2 | 2026-08-27 | 精筛定级接口 `intent_model_category` 对外改返回中文正式内容（配置 `label`：东风猛士系列/越野车/25-30万SUV/其他），库内仍存码值 A/B/C/D 供内部统计，仅返回层映射 | [design](V1.8/v1.8.2-design.md) |
+| V1.8.3 | 2026-09-01 | 补丁：video_context 品牌/车型/品类/动力四字段数组化（跨品牌对比视频 LLM 输出数组致整单校验失败的线上事故修复）+ 初筛 target_brand/model 单值选取规则 + 精筛阶段二"视频语境仅为背景"禁令与多意向车型最优档显式例子，契约不变 | [design](V1.8/v1.8.3-design.md) |
 
 > **V1.4.4 的"测试环境闭环"结论已被 V1.4.5 推翻**：V1.4.4 修复后的一段时间内
 > 未再观察到 `QueuePool limit reached`，但 2026-08-05 12:16 起复发（本次日志 149 次

@@ -74,8 +74,8 @@ config_inquiry（配置咨询）、cost_concern（用车成本）、purchase_pla
       "has_purchase_intent": true,
       "positive_attitude": false,
       "intent_signals": ["price_inquiry"],
-      "target_brand": "评论指向的品牌，没有则用视频语境品牌，无法判断为 null",
-      "target_model": "评论指向的车型，同上",
+      "target_brand": "评论指向的品牌；评论未指明时，从视频语境的品牌列表中选择与该评论最相关的一个；必须输出单个字符串，禁止输出数组；无法判断为 null",
+      "target_model": "评论指向的车型，规则同 target_brand：单个字符串，禁止输出数组，无法判断为 null",
       "intent_strength": "none | low | medium | high",
       "reason": "判断理由，一句话",
       "confidence": 0.9
