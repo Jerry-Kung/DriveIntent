@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_POLISH_SKILL = "user_analysis_polish"
 
-# 五个段标题，须与定级 Prompt（user_lead_analysis_v1.6.3.txt）逐字一致
+# 五个段标题，须与定级 Prompt（user_lead_analysis_v1.8.4.txt）逐字一致
 SECTION_HEADINGS = ["一、评论行为与用户身份", "二、购车阶段评估",
                     "三、目标车型与我方车型匹配度", "四、主页画像与调整结论",
                     "五、总体评价"]

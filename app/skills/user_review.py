@@ -13,7 +13,7 @@ GRADING_STANDARD = (PROMPT_DIR / "grading_standard.txt").read_text(
     encoding="utf-8").strip()
 
 # V1.6.3：analysis_text 第五段的定位锚点，须与定级 Prompt
-# （user_lead_analysis_v1.6.3.txt）中的第五个段标题逐字一致。
+# （user_lead_analysis_v1.8.4.txt）中的第五个段标题逐字一致。
 CONCLUSION_ANCHOR = "五、总体评价"
 
 
