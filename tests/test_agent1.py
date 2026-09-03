@@ -90,3 +90,54 @@ async def test_failed_item_keys():
     assert r["is_car_owner"] is None
     assert r["has_purchase_intent"] is None
     assert "intent_strength" not in r
+
+
+def _req_with_empty():
+    # 线上事故形状：3 条评论，第 1 条 content 为空（qwen 会丢弃它）
+    return CommentScreeningRequest(comments=[
+        {"comment_id": "cm_e0", "video_title": "试驾体验", "video_author": "@王",
+         "video_author_fans": 100, "comment_content": "",
+         "comment_author": "a", "comment_author_uid": "u0",
+         "comment_time": "2026-07-19T14:23:00+08:00", "comment_like_count": 0},
+        {"comment_id": "cm_e1", "video_title": "试驾体验", "video_author": "@王",
+         "video_author_fans": 100, "comment_content": "凤尾？古斯特定价低很多吗",
+         "comment_author": "b", "comment_author_uid": "u1",
+         "comment_time": "2026-07-19T09:10:00+08:00", "comment_like_count": 0},
+        {"comment_id": "cm_e2", "video_title": "试驾体验", "video_author": "@王",
+         "video_author_fans": 100, "comment_content": "闭眼劳",
+         "comment_author": "c", "comment_author_uid": "u2",
+         "comment_time": "2026-07-19T09:10:00+08:00", "comment_like_count": 0},
+    ])
+
+
+@pytest.mark.asyncio
+async def test_screening_empty_content_comment_not_failed():
+    """V1.8.5：批内含空 content 评论不再使整批失败。
+
+    线上事故：3 条评论含 1 条空 content，模型跳过它只回 index [0,1]，映射层
+    集合校验失败 → 整单 3 次重试全败。修复后空 content 被代码层剔除并合成
+    确定性结果，作业成功。
+    """
+    ctx = json.dumps({"brand": [], "model": [], "content_type": "互动/话题"})
+    # LLM 输入侧只看到两条非空评论，故只需回 index 0、1
+    screening = json.dumps({"items": [
+        {"index": 0, "is_meaningful": True,
+         "is_suspected_marketing": False, "has_purchase_intent": True,
+         "reason": "对比询价"},
+        {"index": 1, "is_meaningful": False,
+         "reason": "情绪噪音"}]})
+    # Mock 只预置一次 screening 响应：修复后应只用一次（不因重试烧 3 次）
+    out = await run_comment_screening(_executor(ctx, screening),
+                                      _req_with_empty())
+    results = out["results"]
+    assert [r["comment_id"] for r in results] == ["cm_e0", "cm_e1", "cm_e2"]
+    # 空 content 评论：合成结果，不过筛
+    assert results[0]["error"] is None
+    assert results[0]["passed"] is False
+    assert results[0]["filter_type"] == "off_topic"
+    assert results[0]["has_purchase_intent"] is False
+    # 两条非空评论恢复正常映射
+    assert results[1]["error"] is None
+    assert results[1]["passed"] is True
+    assert results[2]["error"] is None
+    assert results[2]["passed"] is False

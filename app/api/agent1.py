@@ -30,12 +30,12 @@ async def _video_context(executor: SkillExecutor,
 
 async def _screen_batch(executor: SkillExecutor, video_context: dict,
                         batch: list[CommentObject]) -> dict[str, CommentScreeningItem]:
-    context = build_screening_input(
-        video_context, [(c.comment_id, c.comment_content) for c in batch])
+    pairs = [(c.comment_id, c.comment_content) for c in batch]
+    context = build_screening_input(video_context, pairs)
     out: CommentScreeningBatchResult = await executor.run(
         COMMENT_SCREENING_SKILL, context, CommentScreeningBatchResult)
     # LLM 只回传 index，代码层按输入顺序还原真实 comment_id（含完整性校验）
-    result = map_batch_result(out, [c.comment_id for c in batch])
+    result = map_batch_result(out, pairs)
     return {i.comment_id: i for i in result.items}
 
 

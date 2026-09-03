@@ -112,3 +112,41 @@ async def test_screen_batch_nonexistent_ids_returns_without_calling_llm(session)
     await screen_comment_batch(session, executor, v.id, [999999])
 
     assert provider._responses == ["sentinel-should-not-be-consumed"]
+
+
+async def test_screen_batch_skips_empty_content_comment(session):
+    """V1.8.5：空 content 评论不进 LLM 批次（不重编 index 造成整批错位），
+    输出侧为其合成确定性结果，全部输入评论都有落库结果。"""
+    v, comments = _setup(session, n_comments=3)
+    # 中间条 content 置空：模型会跳过它、只回另两条 index [0,1]
+    comments[1].content = ""
+    ids = [c.id for c in comments]
+
+    provider = MockProvider()
+    # 模型只看到两条非空评论（index 0、1），空 content 评论被代码层剔除
+    provider.queue(json.dumps({"items": [_item(0), _item(1, purchase=False)]},
+                              ensure_ascii=False))
+    executor = SkillExecutor(LLMGateway(provider))
+
+    await screen_comment_batch(session, executor, v.id, ids)
+
+    # 空 content 评论有落库结果：comment_actor=off_topic、不过筛
+    r1 = get_current_result(session, target_type="comment", target_id=str(ids[1]),
+                            skill_id=COMMENT_SCREENING_SKILL,
+                            skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL])
+    assert r1 is not None
+    assert r1.result["comment_actor"] == "off_topic"
+    assert r1.result["has_purchase_intent"] is False
+    assert r1.result["is_meaningful"] is False
+
+    # 非空评论仍正常映射到正确 comment_id（不因跳过空评论而张冠李戴）
+    r0 = get_current_result(session, target_type="comment", target_id=str(ids[0]),
+                            skill_id=COMMENT_SCREENING_SKILL,
+                            skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL])
+    r2 = get_current_result(session, target_type="comment", target_id=str(ids[2]),
+                            skill_id=COMMENT_SCREENING_SKILL,
+                            skill_version=SKILL_VERSIONS[COMMENT_SCREENING_SKILL])
+    assert r0.result["has_purchase_intent"] is True
+    assert r2.result["has_purchase_intent"] is False
+    # 恰好一次调用（空评论未额外消耗 LLM）
+    assert provider._responses == []
