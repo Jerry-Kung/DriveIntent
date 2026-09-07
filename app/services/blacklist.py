@@ -76,7 +76,8 @@ def load_blacklist_matches(session: Session, ids) -> set[str]:
 def list_blacklist(session: Session) -> list[BlacklistedUser]:
     """返回全部黑名单记录，按 created_at 倒序。"""
     return (session.query(BlacklistedUser)
-            .order_by(BlacklistedUser.created_at.desc()).all())
+            .order_by(BlacklistedUser.created_at.desc(),
+                      BlacklistedUser.id.desc()).all())
 
 
 def delete_blacklist(session: Session, record_id: int) -> bool:

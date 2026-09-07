@@ -16,7 +16,7 @@ class BlacklistedUser(Base):
     __tablename__ = "blacklisted_user"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    douyin_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    douyin_id: Mapped[str] = mapped_column(String(64), unique=True)
     nickname: Mapped[str | None] = mapped_column(String(255))
     remark: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
