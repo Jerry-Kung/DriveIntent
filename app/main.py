@@ -15,6 +15,7 @@ from app.logging_filters import install_access_log_filter
 from app.models import ApiJob
 from app.skills.executor import SkillExecutor
 from app.web.audit import audit_router
+from app.web.blacklist import blacklist_router
 from app.web.routes import router
 from app.workflow.tasks import reset_running
 from app.workflow.worker import Worker
@@ -79,3 +80,4 @@ app = FastAPI(title="DriveIntent", lifespan=lifespan)
 app.include_router(router)
 app.include_router(api_router)
 app.include_router(audit_router)
+app.include_router(blacklist_router)
