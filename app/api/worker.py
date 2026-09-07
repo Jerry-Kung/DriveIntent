@@ -31,13 +31,17 @@ class ApiJobWorker:
         with self.session_factory() as s:
             return load_blacklist_matches(s, ids)
 
-    async def _load_blacklist(self, payload: dict) -> set[str] | None:
+    async def _load_blacklist(self, payload: dict,
+                              job_type: str) -> set[str] | None:
         """作业级加载黑名单命中集合；仅在 profile 作业且存在非空 douyin_id 时查询。
 
-        非 profile 形态（payload 非 dict / accounts 非 list）返回 None；
-        无任何非空 douyin_id 时返回 None。查询经线程池执行（V1.4.x：同步 DB
-        调用不得进入事件循环），异常 fail-open，按无黑名单处理。
+        以 job_type 判定（V1.9.0 评审）：不依赖 payload 形状，避免未来出现
+        带 accounts 键的其它作业类型被误判而触发多余 DB 查询。非 profile 作业
+        直接返回 None。查询经线程池执行（V1.4.x：同步 DB 调用不得进入事件循环），
+        异常 fail-open，按无黑名单处理。
         """
+        if job_type != "profile_analysis":
+            return None
         if not isinstance(payload, dict):
             return None
         accounts = payload.get("accounts")
@@ -122,8 +126,8 @@ class ApiJobWorker:
                     job["job_type"], job["attempt_count"])
 
         # V1.9.0：作业级黑名单命中集合。认领后、执行前加载一次（线程池），
-        # 供后续 per-account 零 LLM 短路；非 profile 作业/无 douyin_id 为 None。
-        blacklist = await self._load_blacklist(payload)
+        # 供后续 per-account 零 LLM 短路；仅 profile 作业加载，其余返回 None。
+        blacklist = await self._load_blacklist(payload, job["job_type"])
 
         # 识图文本收集器：终态时写回 payload，替代 base64 截图
         vision: dict[str, str] = {}
