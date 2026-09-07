@@ -849,3 +849,78 @@ async def test_v181_profile_result_carries_entry_point():
     r = out["results"][0]
     assert r["recommended_entry_point"] == (
         "您在对比坦克300，我们的猛士M817同为硬派越野")
+
+
+# --------------------------------------------------------------------------- #
+# V1.9.0：Agent2 精筛定级黑名单短路
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_v19_blacklisted_account_returns_c_without_llm():
+    """黑名单账号：零 LLM 调用直接定 C（has_value=false）。
+
+    用不含任何预置响应的 MockProvider：正确实现不下发任何 LLM 调用，
+    队列保持为空、不抛错；若错误实现触发任一 LLM 调用，MockProvider.chat
+    因空队列抛 LLMError，账号落入 except 分支，results 带 error——被断言捕获。
+    """
+    provider = MockProvider()  # 不 queue 任何响应：命中即要求零 LLM 调用
+    gateway = LLMGateway(provider)
+    executor = SkillExecutor(gateway)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u1", "account_name": "营销号",
+        "account_douyin_id": "79373130119",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "t", "comment_content": "买车加我",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    grades: list[str] = []
+    out = await run_profile_analysis(
+        executor, gateway, req, grade_sink=grades, blacklist={"79373130119"})
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["intent_level_code"] is None
+    assert "黑名单" in r["analysis"]
+    assert grades == ["C"]
+
+
+@pytest.mark.asyncio
+async def test_v19_blacklist_none_keeps_existing_behavior():
+    """blacklist=None（不传黑名单）：与现状一致，正常走完整流水线。"""
+    lead = json.dumps({
+        "lead_grade": "H", "is_valid_lead": True, "lead_summary": "s",
+        "evidence_comment_ids": ["u2:0"], "confidence": 0.9,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u2", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "落地多少钱",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is True
+    assert r["intent_level_code"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_v19_non_blacklisted_douyin_id_still_grades():
+    """传入的黑名单集合不含本账号 ID：不误伤，仍正常定级。"""
+    lead = json.dumps({
+        "lead_grade": "H", "is_valid_lead": True, "lead_summary": "s",
+        "evidence_comment_ids": ["u3:0"], "confidence": 0.9,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u3", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "这车多少钱",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(
+        executor, gateway, req, blacklist={"different_id"})
+    r = out["results"][0]
+    assert r["has_value"] is True
+    assert r["intent_level_code"] == "high"

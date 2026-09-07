@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Callable
 
 from app.api import staging
 from app.api.agent1 import run_comment_screening
@@ -16,21 +17,60 @@ logger = logging.getLogger(__name__)
 
 class ApiJobWorker:
     def __init__(self, session_factory, executor, gateway,
-                 poll_interval: float | None = None):
+                 poll_interval: float | None = None,
+                 blacklist_loader: Callable[[list[str]], set[str]] | None = None):
         self.session_factory = session_factory
         self.executor = executor
         self.gateway = gateway
         self.poll_interval = poll_interval or settings.worker_poll_interval
+        self._blacklist_loader = blacklist_loader or self._default_blacklist_loader
+
+    def _default_blacklist_loader(self, ids: list[str]) -> set[str]:
+        """默认黑名单加载器：开独立短会话，经服务层批量查命中集合。"""
+        from app.services.blacklist import load_blacklist_matches
+        with self.session_factory() as s:
+            return load_blacklist_matches(s, ids)
+
+    async def _load_blacklist(self, payload: dict) -> set[str] | None:
+        """作业级加载黑名单命中集合；仅在 profile 作业且存在非空 douyin_id 时查询。
+
+        非 profile 形态（payload 非 dict / accounts 非 list）返回 None；
+        无任何非空 douyin_id 时返回 None。查询经线程池执行（V1.4.x：同步 DB
+        调用不得进入事件循环），异常 fail-open，按无黑名单处理。
+        """
+        if not isinstance(payload, dict):
+            return None
+        accounts = payload.get("accounts")
+        if not isinstance(accounts, list):
+            return None
+        ids: list[str] = []
+        for acc in accounts:
+            if not isinstance(acc, dict):
+                continue
+            raw = acc.get("account_douyin_id")
+            if raw:
+                s = str(raw).strip()
+                if s and s not in ids:
+                    ids.append(s)
+        if not ids:
+            return None
+        try:
+            return await asyncio.to_thread(self._blacklist_loader, ids)
+        except Exception as e:
+            logger.warning("黑名单加载失败，本作业按无黑名单处理: %s", e)
+            return None
 
     async def _execute(self, job_id: str, job_type: str, payload: dict,
                        vision_sink: dict | None = None,
-                       grade_sink: list | None = None) -> dict:
+                       grade_sink: list | None = None,
+                       blacklist: set[str] | frozenset[str] | None = None) -> dict:
         """执行作业。只接纯数据，不持有会话，也不触碰 ORM 对象。
 
         V1.4.3：接收 ORM 对象会在访问 deferred 的 request_payload 时重新
         开启事务，把连接钉在池外整个 LLM 期间。
         V1.4.4：进度回调改 async，DB 写入经线程池，避免冻结事件循环；
         识图文本经 vision_sink 收集，终态写回 payload 替代 base64。
+        V1.9.0：blacklist 为作业级黑名单命中集合，透传给 run_profile_analysis。
         """
         async def cb(done):
             await asyncio.to_thread(set_progress_by_id,
@@ -45,7 +85,8 @@ class ApiJobWorker:
             return await run_profile_analysis(self.executor, self.gateway, req,
                                               progress_cb=cb,
                                               vision_sink=vision_sink,
-                                              grade_sink=grade_sink)
+                                              grade_sink=grade_sink,
+                                              blacklist=blacklist)
         raise ValueError(f"未知作业类型: {job_type}")
 
     @staticmethod
@@ -80,6 +121,10 @@ class ApiJobWorker:
         logger.info("开始 API 作业 %s type=%s (第 %d 次)", job_id,
                     job["job_type"], job["attempt_count"])
 
+        # V1.9.0：作业级黑名单命中集合。认领后、执行前加载一次（线程池），
+        # 供后续 per-account 零 LLM 短路；非 profile 作业/无 douyin_id 为 None。
+        blacklist = await self._load_blacklist(payload)
+
         # 识图文本收集器：终态时写回 payload，替代 base64 截图
         vision: dict[str, str] = {}
         # V1.7.3：真实内部 HABC 等级收集器，终态写 api_job.lead_grades
@@ -93,7 +138,8 @@ class ApiJobWorker:
             try:
                 result = await self._execute(job_id, job["job_type"], payload,
                                              vision_sink=vision,
-                                             grade_sink=grades)
+                                             grade_sink=grades,
+                                             blacklist=blacklist)
             except Exception as e:
                 logger.exception("API 作业 %s 执行失败", job_id)
                 # 会话2：写失败状态

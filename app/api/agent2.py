@@ -85,7 +85,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                                request: ProfileAnalysisRequest,
                                *, progress_cb=None,
                                vision_sink: dict | None = None,
-                               grade_sink: list | None = None) -> dict:
+                               grade_sink: list | None = None,
+                               blacklist: set[str] | frozenset[str] | None = None) -> dict:
     """progress_cb 为 async 可调用（V1.4.4：进度落库经线程池执行）。
 
     vision_sink：传入 dict 时，按账号下标收集识图文本，供调用方在终态写回
@@ -94,6 +95,10 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     grade_sink：传入 list 时，按账号下标收集每账号真实内部 HABC 等级
     （V1.7.3：对外 intent_level_code 已为多对一，不能据此反推 HABC）。
     失败账号补 "C" 保持与 results 对齐。不参与对外结果。
+
+    blacklist：V1.9.0 黑名单命中集合（由 Worker 在作业级经线程池加载一次）。
+    None 或空集合时行为与现状一致；命中账号在 per-account 头部短路为 C，
+    跳过识图/过滤/定级/复核/润色，即零 LLM 调用。
     """
     results: list[dict] = []
     ts = now_iso()
@@ -110,7 +115,20 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
         # 防止账号处理抛异常时残留到下一个账号。
         account_token = _CURRENT_ACCOUNT.set(account.account_uid)
         try:
-            if not has_comments:
+            # V1.9.0：黑名单账号最优先短路——零 LLM 调用，直接定 C。
+            # 命中判定须在识图/过滤/定级/复核/润色之前完成。
+            if (blacklist and account.account_douyin_id
+                    and account.account_douyin_id in blacklist):
+                out = UserLeadResult(
+                    lead_grade="C", is_valid_lead=False,
+                    filter_category="blacklisted",
+                    filter_reason="该抖音号已列入系统黑名单",
+                    analysis_text=(
+                        f"该账号（抖音号 {account.account_douyin_id}）已列入黑名单，"
+                        "人工确认为非潜客，直接输出黑名单用户。"),
+                    is_car_owner=False, has_purchase_intent=False)
+                shot_available = False
+            elif not has_comments:
                 out = UserLeadResult(lead_grade="C", is_valid_lead=False)
                 shot_available = False
             else:
