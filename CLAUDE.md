@@ -16,3 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 涉及整体架构/核心数据结构/跨模块接口契约/前后端配合等重要变更行为的改动，请同步更新./claude_docs中的相关文档
 - 默认不进行全量文档阅读，仅阅读与当前任务直接相关的项目文档，默认不阅读历史版本归档文件
 - 如有必要更新CLAUDE.md与README.md等核心文档，遵守最小化更新原则，不得添加任务无关的冗余内容
+
+## 本机 Claude Code 环境（重要）
+
+- 本机 Claude Code 已从 C 盘迁移到 **D 盘**，所有相关本地文件（插件、Marketplace、配置、项目数据、自动记忆）都在 `D:\KLH\DevTools\ClaudeCode\ClaudeCodeData\`。
+- 查找 Claude Code 插件 / skill / 项目记忆时**不要**去 C 盘 `C:\Users\konglinghan\.claude`（该处已空），一律用 D 盘路径。
