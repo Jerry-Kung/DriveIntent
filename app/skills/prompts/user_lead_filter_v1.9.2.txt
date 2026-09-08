@@ -2,6 +2,10 @@
 以及从其主页截图识别出的结构化画像。你的任务是"无效用户过滤"：在正式意向
 评级之前，识别那些实际无购车意向、但容易被误判为高价值客户的用户。
 
+同时，你还承担**疑似黑名单账号识别**（V1.9.2）：综合主页截图画像与评论内容，
+判断该用户是否为疑似营销号或疑似虚假账号，供销售端在拉黑异常账号时参考。
+判定为疑似黑名单时，该账号直接输出、不进后续定级流程。
+
 用户证据包（JSON，user.homepage_profile 为主页画像，缺失时为"（无主页截图）"）：
 $user_evidence_json
 
@@ -22,18 +26,44 @@ filter_category 取对应值：
   但目的是内容创作/获客而非本人购车（须结合主页画像与评论行为综合判断）。
 - other：以上类别之外的其他明确无效情形，必须写明具体情形与理由。
 
+【疑似黑名单类别】仅当用户整体符合以下情形之一时判定为疑似黑名单
+（is_blacklisted=true），blacklist_type 取对应值：
+
+一、疑似营销号（blacklist_type="营销号"，满足以下其中一条即认定）：
+- 昵称/简介出现职业身份：销售、顾问、汽车贸易、车行、二手车、经销商、媒体、
+  代运营等；
+- 昵称/简介出现商业联系方式/获客 CTA：微信、电话、同号、私聊、报价、主页联系等；
+- 内容长期大量涉及商业营销：报价、库存、交付、促销等，或跨品牌的行情、金融、
+  政策等内容；
+- 评论区截流：出现"找我"、"我这里便宜"、"有现车"、"全国发"等引流话术；
+- 企业/机构认证：汽车相关蓝 V / 机构认证身份。
+
+二、疑似虚假账号（blacklist_type="虚假账号"，满足以下其中一条即认定）：
+- 零作品+高粉丝：如作品=0 且粉丝>1 万；
+- 极少作品+大量粉丝：如作品<5 且粉丝>5 万；
+- 高粉低互动：如粉丝>1 万 且 累计获赞/粉丝数量 比例 < 0.1；
+- 模板内容/评论：作品/评论出现大量高度相似内容（为避免误判，大量高度相似
+  评论须满足评论数量>50）。
+
+作品数/粉丝数/获赞数等主页指标来自 user.homepage_profile 的截图识别结果
+（如 fans_count、likes_count、follow_count、raw_description、content_themes）。
+若相应截图信息缺失、无法判断，则跳过该条规则，不得臆造数据。
+
 【判定原则】
 1. 全量综合判断：必须综合该用户全部评论与主页画像整体判断，严禁凭单条
    评论片面定性；
 2. 宁放过勿误杀：过滤必须有明确证据（filter_reason 中引用具体评论内容或
    画像字段）；证据不足、情形模糊、多种解释并存时一律 filtered=false 放行，
-   交由后续评级环节甄别；
+   交由后续评级环节甄别；疑似黑名单同理——证据不足时 is_blacklisted=false；
 3. 无论是否过滤，两个独立标签照常判定：
    - is_car_owner（是否车主）：有明确证据表明该用户大概率已购车
-     （已下单/下大定也算已购，不要求是我方在售车型）→ true；
+     （已下单/已大定也算已购，不要求是我方在售车型）→ true；
      "准备订""想下定"是意向不是已购，咨询他人用车体验的是潜在买家，均判 false；
    - has_purchase_intent（购车意向）：表达了任何本人买车相关倾向 → true；
      替他人问询/怂恿他人不算本人意向；单纯夸赞、技术讨论不算。
+4. 疑似黑名单与过滤类别并行：若同时符合疑似黑名单与某过滤类别，is_blacklisted
+   优先置 true，filtered 可同时为 true，两者不互斥；is_blacklisted=true 时
+   blacklist_reason 必须给出具体中文理由。
 
 请严格输出以下 JSON（不要输出任何其他内容）：
 {
@@ -42,6 +72,9 @@ filter_category 取对应值：
   "filter_reason": "过滤理由，必须引用具体评论/画像证据，未过滤为 null",
   "is_car_owner": "是否车主布尔值：true | false",
   "has_purchase_intent": "是否有购车意向布尔值：true | false",
+  "is_blacklisted": "是否疑似黑名单布尔值：true | false",
+  "blacklist_type": "疑似黑名单类型：营销号 | 虚假账号，非疑似黑名单为 null",
+  "blacklist_reason": "疑似黑名单判断理由，必须引用具体证据，非疑似黑名单为 null",
   "evidence_comment_ids": ["支撑判断的评论 comment_id，必须来自输入"],
   "profile_tags": ["账号画像标签，如：已购车主、营销账号、汽车从业者"],
   "profile_summary": "账号画像摘要，50-150 字",
@@ -51,12 +84,13 @@ filter_category 取对应值：
 
 要求：
 1. 过滤结论必须有证据支撑：filtered=true 时 filter_category 与 filter_reason
-   必填，evidence_comment_ids 不得为空；
-2. 没有证据的字段输出 null 或空数组，严禁编造。
-3. 可读性（重要）：analysis_text、profile_summary、profile_tags、filter_reason
-   等面向人阅读的文本字段必须使用一读即懂的自然中文，不得出现任何英文字段名
-   、枚举值或布尔字面量（如 already_purchased、filtered、true、false），
-   也不得复述本输出 JSON 的字段名；引用证据时直接引用评论原文或画像内容，
-   品牌/车型名等专有名词不受此限。
+   必填，evidence_comment_ids 不得为空；is_blacklisted=true 时 blacklist_type
+   与 blacklist_reason 必填；
+2. 没有证据的字段输出 null 或空数组，严禁编造；
+3. 可读性（重要）：analysis_text、profile_summary、profile_tags、filter_reason、
+   blacklist_reason 等面向人阅读的文本字段必须使用一读即懂的自然中文，不得出现
+   任何英文字段名、枚举值或布尔字面量（如 already_purchased、filtered、true、
+   false），也不得复述本输出 JSON 的字段名；引用证据时直接引用评论原文或画像
+   内容，品牌/车型名等专有名词不受此限。
    反例（禁止）："filtered判定为true，类别为already_purchased"；
    正例（正确）："该用户已提车且未表达新增购车意向，属已购无新购计划，予以过滤。"

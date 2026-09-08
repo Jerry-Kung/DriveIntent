@@ -117,6 +117,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
         try:
             # V1.9.0：黑名单账号最优先短路——零 LLM 调用，直接定 C。
             # 命中判定须在识图/过滤/定级/复核/润色之前完成。
+            # V1.9.2：确认黑名单补对外三字段——is_blacklisted=true、
+            # blacklist_type="confirmed"、blacklist_reason 为中文说明。
             if (blacklist and account.account_douyin_id
                     and account.account_douyin_id in blacklist):
                 out = UserLeadResult(
@@ -126,7 +128,9 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                     analysis_text=(
                         f"该账号（抖音号 {account.account_douyin_id}）已列入黑名单，"
                         "人工确认为非潜客，直接输出黑名单用户。"),
-                    is_car_owner=False, has_purchase_intent=False)
+                    is_car_owner=False, has_purchase_intent=False,
+                    is_blacklisted=True, blacklist_type="confirmed",
+                    blacklist_reason="该抖音号已列入系统黑名单")
                 shot_available = False
             elif not has_comments:
                 out = UserLeadResult(lead_grade="C", is_valid_lead=False)
@@ -137,10 +141,14 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 shot_available = bool(vision_text)
                 if vision_sink is not None and vision_text:
                     vision_sink[str(idx)] = vision_text
-                # V1.6：定级前先过无效用户过滤（fail-open），命中直接定 C
+                # V1.6：定级前先过无效用户过滤（fail-open），命中直接定 C。
+                # V1.9.2：该节点同时识别疑似黑名单（营销号/虚假账号），命中
+                # 优先于六类过滤类别直接定 C，不进定级/复核/润色。
                 evidence = _build_evidence(account, vision_text)
                 filt = await run_user_filter(executor, evidence)
-                if filt.filtered:
+                if filt.is_blacklisted:
+                    out = build_filtered_lead_result(filt)
+                elif filt.filtered:
                     out = build_filtered_lead_result(filt)
                 else:
                     out = await analyze_account(
@@ -168,6 +176,8 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "has_purchase_intent": None,
                 "intent_models": [], "intent_model_category": None,
                 "recommended_entry_point": None,
+                "is_blacklisted": False, "blacklist_type": None,
+                "blacklist_reason": None,
                 "profile_tags": [],
                 "profile_summary": "", "analysis": "", "processed_at": ts,
                 "error": str(e)[:500]})

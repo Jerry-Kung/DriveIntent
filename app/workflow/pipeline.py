@@ -141,7 +141,9 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     # V1.6：定级前先过无效用户过滤（fail-open）。命中合成 C 级结果照常
     # 落 AnalysisResult（含审计字段）；is_valid_lead=False 自然跳过 upsert_lead。
     filt = await run_user_filter(executor, evidence)
-    if filt.filtered:
+    # V1.9.2：疑似黑名单（is_blacklisted=true）与六类过滤命中共用同一合成
+    # 路径 build_filtered_lead_result——均直接定 C、不进定级/复核/润色。
+    if filt.is_blacklisted or filt.filtered:
         out: UserLeadResult = build_filtered_lead_result(filt)
     else:
         out = await executor.run(

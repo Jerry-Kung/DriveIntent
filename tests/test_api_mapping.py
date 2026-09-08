@@ -316,3 +316,35 @@ def test_map_profile_entry_point_default_null():
     r = map_profile_result(out, screenshot_available=True, has_comments=True,
                            processed_at="t")
     assert r.recommended_entry_point is None
+
+
+def test_map_profile_carries_blacklist_fields():
+    """V1.9.2：疑似/确认黑名单三字段透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                         is_blacklisted=True, blacklist_type="营销号",
+                         blacklist_reason="昵称简介含商业联系方式，评论区多次引流")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.is_blacklisted is True
+    assert r.blacklist_type == "营销号"
+    assert r.blacklist_reason.endswith("引流")
+
+    out2 = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                          is_blacklisted=True, blacklist_type="confirmed",
+                          blacklist_reason="该抖音号已列入系统黑名单")
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is True
+    assert r2.is_blacklisted is True
+    assert r2.blacklist_type == "confirmed"
+
+
+def test_map_profile_blacklist_defaults_null():
+    """非黑名单账号：三字段保持 false/null/null。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.is_blacklisted is False
+    assert r.blacklist_type is None
+    assert r.blacklist_reason is None

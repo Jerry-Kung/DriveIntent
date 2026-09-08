@@ -220,6 +220,9 @@ API Key 由服务方分配。认证失败返回 `401`。
 | `intent_models`       | ArrayString    | **V1.8.0** 意向车型：该账号**有购买意向**的车型列表（如 `["坦克300"]`）；空数组=无意向车型；该条处理失败时为 `[]` |
 | `intent_model_category` | String \| null | **V1.8.0** 意向车型分类，返回**中文正式内容**：`"东风猛士系列"` / `"越野车"` / `"25-30万SUV"` / `"其他"`（分类标准与对应中文在服务端 `config/intent_categories.json` 可配，默认 A=东风猛士系列、B=越野车、C=25-30万SUV、D=其他或无意向车型）；未配置标准/处理失败时为 `null`。库内仍存码值 A/B/C/D 供内部统计，本字段仅在对外返回时映射 |
 | `recommended_entry_point` | String \| null | **V1.8.1** 销售开场白建议：一句可直接使用的开场话术，利用我方车型与用户意向车型的对比或关联作为切入点，辅助下游制定销售策略；模型未输出/处理失败时为 `null` |
+| `is_blacklisted`       | Boolean        | **V1.9.2** 是否被判定为黑名单用户（含确认/疑似）；非黑名单、处理失败时为 `false` |
+| `blacklist_type`       | String \| null | **V1.9.2** 黑名单类型：`"confirmed"`（服务端黑名单库命中）/ `"营销号"`（疑似营销账号）/ `"虚假账号"`（疑似虚假账号）；非黑名单、处理失败时为 `null` |
+| `blacklist_reason`     | String \| null | **V1.9.2** 黑名单判断理由（中文，引用具体证据）；非黑名单、处理失败时为 `null` |
 | `profile_tags`        | ArrayString    | 账号画像标签，如 `["已购车主", "智驾关注"]`                          |
 | `profile_summary`     | String         | 账号画像摘要（150-300 字）                                    |
 | `analysis`            | String         | AI 分析过程说明（400-600 字）                                 |
@@ -247,6 +250,16 @@ API Key 由服务方分配。认证失败返回 `401`。
 > "该账号…已列入黑名单…"字样，`error` 为 `null`。其余字段与内容同未命中时一致
 > （该账号不参与后续 LLM 流水线，故无定级/复核/润色叙述）。黑名单经管理页
 > `/blacklist` 维护。
+>
+> **V1.9.2 疑似黑名单说明**：精筛的"无效用户过滤"节点（Agent2 定级前一次独立 LLM
+> 调用）同时识别**疑似营销号** / **疑似虚假账号**两类疑似黑名单账号——综合该账号
+> 主页截图画像（昵称/简介/认证/粉丝数/获赞数/作品数等）与全部评论内容判断（规则见
+> `claude_docs/versions/V1/V1.9/v1.9.2-design.md`），命中即直接输出、不进后续
+> 定级流程：`is_blacklisted=true`，`blacklist_type` 分别取 `"营销号"` / `"虚假账号"`，
+> `blacklist_reason` 给出中文理由，`has_value=false`。**对接方如需在拉黑异常账号前
+> 参考自动识别结果，可依这三字段判断；`is_blacklisted=true` 时建议以人工复核后再
+> 正式拉黑**（该判定基于 LLM，误判时宁放过勿误杀）。确认黑名单与疑似黑名单字段
+> 口径一致：均 `is_blacklisted=true`，确认命中的 `blacklist_type` 为 `"confirmed"`。
 
 
 

@@ -90,6 +90,13 @@ class ProfileResult(BaseModel):
     # V1.8.1：定级节点输出的销售开场白建议，透出给下游辅助制定销售策略；
     # LLM 未输出/历史数据/该条处理失败时为 null。
     recommended_entry_point: str | None = None
+    # V1.9.2：疑似/确认黑名单三字段。is_blacklisted=false 为常态；命中时
+    # blacklist_type 为中文枚举——确认黑名单"confirmed"、疑似营销号"营销号"、
+    # 疑似虚假账号"虚假账号"；blacklist_reason 为中文判断理由；非黑名单、
+    # 该条处理失败、历史数据（无此键）时 is_blacklisted=false、type/reason 为 null。
+    is_blacklisted: bool = False
+    blacklist_type: str | None = None
+    blacklist_reason: str | None = None
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis: str = ""

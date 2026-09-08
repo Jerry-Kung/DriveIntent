@@ -924,3 +924,117 @@ async def test_v19_non_blacklisted_douyin_id_still_grades():
     r = out["results"][0]
     assert r["has_value"] is True
     assert r["intent_level_code"] == "high"
+
+
+# --------------------------------------------------------------------------- #
+# V1.9.2：疑似黑名单账号识别
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_v192_marketing_suspect_short_circuits_without_grading():
+    """疑似营销号：一次过滤调用后直接返回 C，定级/复核/润色均未调用。"""
+    from tests.test_user_filter import SUSPECTED_MARKETING_JSON
+    provider = MockProvider()
+    provider.queue("营销号主页截图", SUSPECTED_MARKETING_JSON)  # 识图+过滤两跳
+    gateway = LLMGateway(provider)
+    executor = SkillExecutor(gateway)
+    grades: list[str] = []
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u1", "account_name": "营销号",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "t", "comment_content": "买车加我微信",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req, grade_sink=grades)
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["intent_level_code"] is None
+    assert r["is_blacklisted"] is True
+    assert r["blacklist_type"] == "营销号"
+    assert r["blacklist_reason"]
+    assert provider._responses == []            # 定级/复核/润色未消费任何响应
+    assert grades == ["C"]
+
+
+@pytest.mark.asyncio
+async def test_v192_fake_account_suspect_short_circuits():
+    """疑似虚假账号：type=虚假账号，直接 C，不进定级。"""
+    from tests.test_user_filter import SUSPECTED_FAKE_JSON
+    provider = MockProvider()
+    provider.queue("高粉低作品主页截图", SUSPECTED_FAKE_JSON)  # 识图+过滤两跳
+    gateway = LLMGateway(provider)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u2", "account_name": "高粉账号",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "t", "comment_content": "看看",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(SkillExecutor(gateway), gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["is_blacklisted"] is True
+    assert r["blacklist_type"] == "虚假账号"
+    assert provider._responses == []
+
+
+@pytest.mark.asyncio
+async def test_v192_confirmed_blacklist_carries_three_fields():
+    """V1.9.0 确认黑名单：type=confirmed，三字段透出，仍零 LLM 调用。"""
+    provider = MockProvider()  # 命中要求零 LLM 调用
+    gateway = LLMGateway(provider)
+    executor = SkillExecutor(gateway)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u1", "account_name": "营销号",
+        "account_douyin_id": "79373130119",
+        "account_homepage_screenshot": "https://cdn/x.png",
+        "comment_history": [{"video_title": "t", "comment_content": "买车加我",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(
+        executor, gateway, req, blacklist={"79373130119"})
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["is_blacklisted"] is True
+    assert r["blacklist_type"] == "confirmed"
+    assert "黑名单" in r["blacklist_reason"]
+
+
+@pytest.mark.asyncio
+async def test_v192_normal_account_carries_null_blacklist_fields():
+    """未命中黑名单：走完整流水线，三字段为 false/null/null。"""
+    lead = json.dumps({
+        "lead_grade": "H", "is_valid_lead": True, "lead_summary": "s",
+        "evidence_comment_ids": ["u3:0"], "confidence": 0.9,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"})
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u3", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "这车多少钱",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is True
+    assert r["is_blacklisted"] is False
+    assert r["blacklist_type"] is None
+    assert r["blacklist_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_v192_error_item_carries_null_blacklist_fields():
+    """处理失败：三字段兜底为 false/null/null。"""
+    executor, gateway = _executor_and_gateway()
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u4", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "c",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["error"]
+    assert r["is_blacklisted"] is False
+    assert r["blacklist_type"] is None
+    assert r["blacklist_reason"] is None

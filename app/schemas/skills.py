@@ -181,6 +181,14 @@ class UserLeadResult(BaseModel):
     # 被前置过滤节点命中时写入；未过滤（走完整定级流水线）为 None。
     filter_category: str | None = None
     filter_reason: str | None = None
+    # V1.9.2：疑似/确认黑名单标识（进对外 API 契约）。
+    # is_blacklisted=false 为常态；blacklist_type 中文枚举——过滤节点判定
+    # 的疑似黑名单为"营销号"/"虚假账号"，V1.9.0 确认黑名单（数据库命中，
+    # 见 agent2 短路）为 "confirmed"；blacklist_reason 为中文判断理由，
+    # 非黑名单时 type/reason 均为 None。
+    is_blacklisted: bool = False
+    blacklist_type: str | None = None
+    blacklist_reason: str | None = None
     confidence: float = 0.0
 
 
@@ -222,6 +230,11 @@ class UserFilterResult(BaseModel):
     识别"实际无购车意向但易被误判为高价值"的用户，命中者不进定级流水线。
     两个独立标签由本节点一并判定：被过滤用户不进定级，对外契约的
     is_car_owner / has_purchase_intent 由此供给；未过滤时以定级输出为准。
+
+    V1.9.2：本节点额外识别"疑似黑名单账号"（疑似营销号 / 疑似虚假账号），
+    与六类无效用户过滤并行。is_blacklisted=true 时 blacklist_type 为中文枚举
+    （仅两种疑似类型；"confirmed" 由数据库黑名单短路给定、不在本节点输出），
+    blacklist_reason 为中文理由；同时命中黑名单与过滤类别时黑名单优先。
     """
     filtered: bool = False
     filter_category: Literal["already_purchased", "promoting_others",
@@ -234,4 +247,9 @@ class UserFilterResult(BaseModel):
     profile_tags: list[str] = []
     profile_summary: str = ""
     analysis_text: str = ""
+    # V1.9.2：疑似黑名单三字段（进对外 API 契约）。is_blacklisted=true 时
+    # blacklist_type 必须非空（否则视为输出非法，run_user_filter fail-open 放行）。
+    is_blacklisted: bool = False
+    blacklist_type: Literal["营销号", "虚假账号"] | None = None
+    blacklist_reason: str | None = None
     confidence: float = 0.0
