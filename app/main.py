@@ -17,6 +17,7 @@ from app.skills.executor import SkillExecutor
 from app.web.audit import audit_router
 from app.web.blacklist import blacklist_router
 from app.web.routes import router
+from app.api.blacklist import blacklist_api_router
 from app.workflow.tasks import reset_running
 from app.workflow.worker import Worker
 
@@ -79,5 +80,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="DriveIntent", lifespan=lifespan)
 app.include_router(router)
 app.include_router(api_router)
+app.include_router(blacklist_api_router)
 app.include_router(audit_router)
 app.include_router(blacklist_router)

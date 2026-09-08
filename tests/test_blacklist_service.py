@@ -11,8 +11,9 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.models import BlacklistedUser
-from app.services.blacklist import (add_blacklist, delete_blacklist,
-                                    list_blacklist, load_blacklist_matches)
+from app.services.blacklist import (add_blacklist, count_blacklist,
+                                    delete_blacklist, list_blacklist,
+                                    load_blacklist_matches)
 
 
 def _seed(session, *douyin_ids):
@@ -173,3 +174,80 @@ def test_delete_blacklist_hit(session):
 def test_delete_blacklist_miss(session):
     _seed(session, "79373130119")
     assert delete_blacklist(session, 999999) is False
+
+
+# --------------------------------------------------------------------------- #
+# list_blacklist 分页/搜索（V1.9.1）与 count_blacklist
+# --------------------------------------------------------------------------- #
+
+def test_list_blacklist_default_kwargs_regression(session):
+    """缺省参数路径行为与 V1.9.0 一致：全量倒序，不分页不搜索。"""
+    rows = _seed(session, "111111", "222222", "333333")
+    for i, row in enumerate(rows):
+        row.created_at = datetime(2026, 1, 1 + i)
+    session.commit()
+    listed = list_blacklist(session)
+    assert [r.douyin_id for r in listed] == ["333333", "222222", "111111"]
+
+
+def test_list_blacklist_offset_limit(session):
+    """offset/limit 生效：只取指定窗口。"""
+    rows = _seed(session, "111111", "222222", "333333")
+    for i, row in enumerate(rows):
+        row.created_at = datetime(2026, 1, 1 + i)
+    session.commit()
+    # 倒序 333333/222222/111111，取中间一条
+    listed = list_blacklist(session, offset=1, limit=1)
+    assert [r.douyin_id for r in listed] == ["222222"]
+
+
+def test_list_blacklist_search_by_douyin_id(session):
+    """search 命中 douyin_id 子串。"""
+    _seed(session, "79373130119", "79373130120", "999999")
+    listed = list_blacklist(session, search="7937")
+    assert {r.douyin_id for r in listed} == {"79373130119", "79373130120"}
+
+
+def test_list_blacklist_search_by_nickname_remark(session):
+    """search 命中 nickname / remark。"""
+    session.add(BlacklistedUser(douyin_id="111", nickname="东风用户",
+                                remark="广告"))
+    session.add(BlacklistedUser(douyin_id="222", remark="越野爱好者"))
+    session.commit()
+    assert {r.douyin_id for r in list_blacklist(
+        session, search="东风")} == {"111"}
+    assert {r.douyin_id for r in list_blacklist(
+        session, search="越野")} == {"222"}
+
+
+def test_list_blacklist_search_no_hit(session):
+    _seed(session, "111111")
+    assert list_blacklist(session, search="不存在的关键字") == []
+
+
+def test_list_blacklist_search_escapes_like_wildcards(session):
+    """search 含 LIKE 通配符 %/_ 时按字面匹配，不做宽泛命中。"""
+    # douyin_id 仅收纯数字，故用 nickname/remark 验证字面匹配
+    session.add(BlacklistedUser(douyin_id="111111", nickname="abc_def"))
+    session.add(BlacklistedUser(douyin_id="222222", nickname="abcdef"))
+    session.commit()
+    # "_" 在 LIKE 中默认匹配任意单字符；此处断言不把 abc_def 与 abcXef 混淆
+    assert {r.douyin_id for r in list_blacklist(
+        session, search="abc_def")} == {"111111"}
+    # "%" 同理按字面处理
+    session.add(BlacklistedUser(douyin_id="333333", nickname="a%b"))
+    session.add(BlacklistedUser(douyin_id="444444", nickname="ab"))
+    session.commit()
+    assert {r.douyin_id for r in list_blacklist(
+        session, search="a%b")} == {"333333"}
+
+
+def test_count_blacklist_all(session):
+    _seed(session, "111111", "222222", "333333")
+    assert count_blacklist(session) == 3
+
+
+def test_count_blacklist_with_search(session):
+    _seed(session, "79373130119", "79373130120", "999999")
+    assert count_blacklist(session, search="7937") == 2
+    assert count_blacklist(session, search="不存在") == 0

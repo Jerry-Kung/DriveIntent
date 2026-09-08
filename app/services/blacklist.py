@@ -1,6 +1,24 @@
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import BlacklistedUser
+
+
+def _build_search_filter(search: str | None):
+    """构造关键字子串匹配过滤（LIKE %q%），对 douyin_id/nickname/remark 命中。
+
+    返回条件对象供 query.filter() 使用；search 为空/None 时返回 None（调用方
+    据此跳过 filter，保持全量查询）。
+
+    autoescape=True：把输入中的 %/_ 按字面转义（跨 MySQL/SQLite 一致），
+    避免用户输入含 LIKE 通配符时意外宽匹配（V1.9.1）。
+    """
+    if not search:
+        return None
+    return or_(
+        BlacklistedUser.douyin_id.contains(search, autoescape=True),
+        BlacklistedUser.nickname.contains(search, autoescape=True),
+        BlacklistedUser.remark.contains(search, autoescape=True))
 
 
 def _validate_douyin_id(raw: str) -> bool:
@@ -73,11 +91,37 @@ def load_blacklist_matches(session: Session, ids) -> set[str]:
     return matches
 
 
-def list_blacklist(session: Session) -> list[BlacklistedUser]:
-    """返回全部黑名单记录，按 created_at 倒序。"""
-    return (session.query(BlacklistedUser)
-            .order_by(BlacklistedUser.created_at.desc(),
-                      BlacklistedUser.id.desc()).all())
+def list_blacklist(session: Session, *, search: str | None = None,
+                   offset: int | None = None,
+                   limit: int | None = None) -> list[BlacklistedUser]:
+    """返回黑名单记录，按 created_at 倒序（同秒按 id 倒序）。
+
+    三个关键字参数缺省为 None 时行为与 V1.9.0 完全一致（全量倒序），供内部
+    管理页使用；对外 API 传入 search/offset/limit 实现关键字搜索与分页。
+    - search：非空时对 douyin_id / nickname / remark 做子串匹配（不含通配符）。
+    - offset / limit：非空时应用 LIMIT/OFFSET 分页。
+    """
+    query = session.query(BlacklistedUser)
+    cond = _build_search_filter(search)
+    if cond is not None:
+        query = query.filter(cond)
+    query = query.order_by(BlacklistedUser.created_at.desc(),
+                           BlacklistedUser.id.desc())
+    if offset is not None:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all()
+
+
+def count_blacklist(session: Session, *,
+                    search: str | None = None) -> int:
+    """返回满足条件的黑名单记录总数；search 缺省时返回全量条数。"""
+    query = session.query(func.count(BlacklistedUser.id))
+    cond = _build_search_filter(search)
+    if cond is not None:
+        query = query.filter(cond)
+    return int(query.scalar())
 
 
 def delete_blacklist(session: Session, record_id: int) -> bool:

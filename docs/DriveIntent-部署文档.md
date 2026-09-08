@@ -289,6 +289,16 @@ curl -X POST http://localhost:8000/api/v1/comment-screening \
 # 返回 202 与 job_id，再用 GET /api/v1/jobs/{job_id} 轮询结果
 ```
 
+4. 验证黑名单管理 API（V1.9.1）：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/blacklist \
+  -H "Authorization: Bearer <你的API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"douyin_ids":["79373130119"]}'
+# 返回 {"added":1,"skipped":0,"invalid":0}，再 GET /api/v1/blacklist 分页查询
+```
+
 API 字段与轮询细节见 `docs/DriveIntent-V1-API对接文档.md`。
 
 也可使用一键冒烟测试脚本（修改脚本顶部配置区的 `BASE_URL` 与 `API_KEY` 后，在任意装有 Python 3.10+ 的机器上运行，无需安装依赖）：
