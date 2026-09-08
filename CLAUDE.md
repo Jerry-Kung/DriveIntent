@@ -20,4 +20,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 本机 Claude Code 环境（重要）
 
 - 本机 Claude Code 已从 C 盘迁移到 **D 盘**，所有相关本地文件（插件、Marketplace、配置、项目数据、自动记忆）都在 `D:\KLH\DevTools\ClaudeCode\ClaudeCodeData\`。
-- 查找 Claude Code 插件 / skill / 项目记忆时**不要**去 C 盘 `C:\Users\konglinghan\.claude`（该处已空），一律用 D 盘路径。
+- 查找 Claude Code 插件 / skill / 项目记忆时**不要**去 C 盘 `C:\Users\konglinghan\.claude`或者`~/.claude`（该处已空），一律用 D 盘路径。
