@@ -190,6 +190,16 @@ class UserLeadResult(BaseModel):
     blacklist_type: str | None = None
     blacklist_reason: str | None = None
     confidence: float = 0.0
+    # V1.10.0: User intent for our available models audit fields.
+    # our_model_match: LLM semantic judgment enum (our_model/similar/unrelated/unknown)
+    # our_model_reason: judgment basis; both internal use only, not in external API.
+    # our_model_intent_level (high/medium/low) and recommend_our_model (our model name)
+    # are external API fields, None when not determined.
+    our_model_match: Literal["our_model", "similar", "unrelated",
+                             "unknown"] = "unknown"
+    our_model_reason: str | None = None
+    our_model_intent_level: Literal["高", "中", "低"] | None = None
+    recommend_our_model: str | None = None
 
 
 class UserLeadReviewResult(BaseModel):

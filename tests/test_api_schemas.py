@@ -50,3 +50,9 @@ def test_profile_result_serialization():
                       profile_tags=["已购车主"], profile_summary="...",
                       analysis="...", processed_at="2026-07-19T16:00:00+08:00")
     assert r.model_dump()["intent_level_code"] == "high"
+
+
+def test_v110_profile_result_our_model_defaults():
+    r = ProfileResult(account_uid="u1", has_value=True)
+    assert r.our_model_intent_level is None
+    assert r.recommend_our_model is None

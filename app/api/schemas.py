@@ -90,6 +90,11 @@ class ProfileResult(BaseModel):
     # V1.8.1：定级节点输出的销售开场白建议，透出给下游辅助制定销售策略；
     # LLM 未输出/历史数据/该条处理失败时为 null。
     recommended_entry_point: str | None = None
+    # V1.10.0：用户对我方在售车型购车意向两字段。our_model_intent_level 为
+    # 高/中/低枚举，recommend_our_model 为推荐的我方在售车型名；LLM 未判定/
+    # 该条处理失败/历史数据时均为 null。
+    our_model_intent_level: str | None = None
+    recommend_our_model: str | None = None
     # V1.9.2：疑似/确认黑名单三字段。is_blacklisted=false 为常态；命中时
     # blacklist_type 为中文枚举——确认黑名单"confirmed"、疑似营销号"营销号"、
     # 疑似虚假账号"虚假账号"；blacklist_reason 为中文判断理由；非黑名单、

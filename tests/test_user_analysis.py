@@ -127,6 +127,25 @@ async def test_run_user_analysis_valid_lead_all_evidence_hallucinated_creates_no
         target_type="user", target_id=str(u1.id)).count() == 1
 
 
+def test_v110_user_lead_result_our_model_defaults():
+    from app.schemas.skills import UserLeadResult
+    r = UserLeadResult(lead_grade="B")
+    assert r.our_model_match == "unknown"
+    assert r.our_model_reason is None
+    assert r.our_model_intent_level is None
+    assert r.recommend_our_model is None
+
+
+def test_v110_user_lead_result_rejects_invalid_our_model():
+    import pytest as _pytest
+    from pydantic import ValidationError
+    from app.schemas.skills import UserLeadResult
+    with _pytest.raises(ValidationError):
+        UserLeadResult(lead_grade="B", our_model_match="not_a_level")
+    with _pytest.raises(ValidationError):
+        UserLeadResult(lead_grade="B", our_model_intent_level="甲")
+
+
 async def test_v16_run_user_analysis_filtered_no_lead(session):
     from app.models import AnalysisResult
     from tests.test_user_filter import FILTERED_JSON
