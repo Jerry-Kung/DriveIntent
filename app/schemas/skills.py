@@ -190,13 +190,16 @@ class UserLeadResult(BaseModel):
     blacklist_type: str | None = None
     blacklist_reason: str | None = None
     confidence: float = 0.0
-    # V1.10.0: User intent for our available models audit fields.
-    # our_model_match: LLM semantic judgment enum (our_model/similar/unrelated/unknown)
-    # our_model_reason: judgment basis; both internal use only, not in external API.
-    # our_model_intent_level (high/medium/low) and recommend_our_model (our model name)
-    # are external API fields, None when not determined.
+    # V1.10.0：对我方在售车型的购车意向相关字段。
+    # our_model_match：LLM 语义判定枚举（our_model/similar/unrelated/unknown），
+    # our_model_reason：判定依据；两者均为内部审计用，不进对外 API 契约。
+    # 允许为 None——Prompt 全局要求"无证据支撑的字段输出 null"，廉价主力模型
+    # 会照做；若此处不容忍 None，整个账号会落 except 兜底致线索丢失。
+    # 调用方（agent2）把 None 兜底为 "unknown"。
+    # our_model_intent_level（高/中/低）与 recommend_our_model（我方在售车型名）
+    # 进对外 API 契约，未判定/未配置我方车型时为 None。
     our_model_match: Literal["our_model", "similar", "unrelated",
-                             "unknown"] = "unknown"
+                             "unknown"] | None = None
     our_model_reason: str | None = None
     our_model_intent_level: Literal["高", "中", "低"] | None = None
     recommend_our_model: str | None = None

@@ -38,12 +38,12 @@ def resolve_our_model_intent_level(match: str, lead_grade: str) -> str | None:
     mapped = _GRADE_MAP.get(lead_grade)
     if mapped is None:
         return None
-    base = _LEVEL_ORDER.index(mapped[0])
     if match == "unknown":
         return "低"
     steps = _OUR_MODEL_MATCH_STEPS.get(match)
     if steps is None:          # 非法/缺省枚举按最低意向处理，不抛错
         return "低"
+    base = _LEVEL_ORDER.index(mapped[0])
     return _LEVEL_ORDER[min(base + steps, len(_LEVEL_ORDER) - 1)]
 
 

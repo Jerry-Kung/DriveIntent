@@ -130,10 +130,25 @@ async def test_run_user_analysis_valid_lead_all_evidence_hallucinated_creates_no
 def test_v110_user_lead_result_our_model_defaults():
     from app.schemas.skills import UserLeadResult
     r = UserLeadResult(lead_grade="B")
-    assert r.our_model_match == "unknown"
+    assert r.our_model_match is None
     assert r.our_model_reason is None
     assert r.our_model_intent_level is None
     assert r.recommend_our_model is None
+
+
+def test_v110_user_lead_result_accepts_null_our_model_match():
+    """V1.10.0 终审：our_model_match 须容忍 LLM 输出 null。
+
+    Prompt 全局要求"无证据支撑的字段输出 null"，廉价主力模型会照做；
+    若 schema 不容忍 None，该账号会落 except 兜底致整条线索丢失。
+    """
+    from app.schemas.skills import UserLeadResult
+    r = UserLeadResult.model_validate(
+        {"lead_grade": "B", "our_model_match": None})
+    assert r.our_model_match is None
+    r2 = UserLeadResult.model_validate(
+        {"lead_grade": "B", "our_model_match": "similar"})
+    assert r2.our_model_match == "similar"
 
 
 def test_v110_user_lead_result_rejects_invalid_our_model():

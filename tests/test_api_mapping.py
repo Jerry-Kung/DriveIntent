@@ -376,7 +376,12 @@ def test_v110_resolve_our_model_intent_level_matrix():
 
 
 def test_v110_map_profile_carries_our_model_fields():
-    """V1.10.0：两字段透传对外契约（has_value 真/假两分支）。"""
+    """V1.10.0：两字段纯透传对外契约。
+
+    映射层不判语义：清理职责在 agent2（无效线索/未配置车型时置 null，
+    见 test_v110_invalid_lead_unlisted_model_nulled）。此处只验证透传，
+    且 is_valid_lead=False 的 out 到达本函数时两字段已被 agent2 清成 None。
+    """
     from app.api.mapping import map_profile_result
     from app.schemas.skills import UserLeadResult
     out = UserLeadResult(lead_grade="A", is_valid_lead=True,
@@ -388,14 +393,12 @@ def test_v110_map_profile_carries_our_model_fields():
     assert r.our_model_intent_level == "中"
     assert r.recommend_our_model == "猛士M817"
 
-    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False,
-                          our_model_intent_level="低",
-                          recommend_our_model="猛士917")
+    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False)
     r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
                             processed_at="t")
     assert r2.has_value is False
-    assert r2.our_model_intent_level == "低"
-    assert r2.recommend_our_model == "猛士917"
+    assert r2.our_model_intent_level is None
+    assert r2.recommend_our_model is None
 
 
 def test_v110_map_profile_our_model_defaults_null():

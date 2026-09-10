@@ -1,7 +1,8 @@
 import json
 import logging
 
-from app.api.mapping import map_profile_result, now_iso, resolve_our_model_intent_level
+from app.api.mapping import (map_profile_result, now_iso,
+                             resolve_our_model_intent_level)
 from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway, _CURRENT_ACCOUNT
@@ -110,13 +111,22 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     our_models_summary = build_our_models_summary(our_models)
     intent_category_standard = build_intent_category_standard(
         load_intent_categories())
-    # V1.10.0：推荐车型校验映射——别称/正名归一化后回落到正式车型名；
-    # 未配置我方车型时为空映射（推荐车型一律置 null）。
-    our_model_names = {normalize(m.model_name): m.model_name
-                       for m in our_models.models} if our_models else {}
-    for m in (our_models.models if our_models else []):
+    # V1.10.0：推荐车型校验映射——别称/正名/品牌前缀组合归一化后回落到正式
+    # 车型名；未配置我方车型时为空映射（推荐车型一律置 null）。
+    # 品牌前缀组合是必要容错：清单渲染行形如"- 东风猛士 猛士M817：售价…"，
+    # 模型照抄前缀时若不剥离会大面积落成 null。normalize 会去掉空白，
+    # 故"东风猛士 猛士M817"与"东风猛士猛士M817"归一后同键。
+    # setdefault 顺序保证正名优先：正名 > 别称 > 品牌前缀组合。
+    ours_configured = bool(our_models and our_models.models)
+    models = our_models.models if ours_configured else []
+    our_model_names = {normalize(m.model_name): m.model_name for m in models}
+    for m in models:
         for alias in m.aliases:
             our_model_names.setdefault(normalize(alias), m.model_name)
+    for m in models:
+        for name in (m.model_name, *m.aliases):
+            our_model_names.setdefault(
+                normalize(f"{m.brand}{name}"), m.model_name)
     for idx, account in enumerate(request.accounts):
         has_comments = len(account.comment_history) > 0
         # V1.7.1：本账号处理期间写入 account_uid 上下文，使 LLM 日志精确
@@ -171,15 +181,20 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
             if grade_sink is not None:
                 # 与 results 按下标对齐；失败账号在 except 分支补 "C"
                 grade_sink.append(out.lead_grade)
-            # V1.10.0：确定性降级算出对我方在售车型的意向等级；推荐车型
-            # 经配置校验，不在我方在售清单内的一律置 null（防 LLM 编造车型名）。
-            # 被过滤/黑名单/无评论账号 is_valid_lead=False，两字段保持 None。
-            if out.is_valid_lead:
+            # V1.10.0：对我方在售车型的意向等级与推荐车型。
+            # 注意：校验必须无条件执行——定级 LLM 可自判 is_valid_lead=false，
+            # 但那时若跳过校验，未在配置内的车型名会经 map_profile_result 的
+            # has_value=False 分支原样透出对外契约。无效账号一律置 null。
+            # 未配置我方在售车型时等级无事实基础，同样置 null。
+            if out.is_valid_lead and ours_configured:
                 out.our_model_intent_level = resolve_our_model_intent_level(
-                    out.our_model_match, out.lead_grade)
+                    out.our_model_match or "unknown", out.lead_grade)
                 if out.recommend_our_model:
                     out.recommend_our_model = our_model_names.get(
                         normalize(out.recommend_our_model))
+            else:
+                out.our_model_intent_level = None
+                out.recommend_our_model = None
             mapped = map_profile_result(
                 out, screenshot_available=shot_available,
                 has_comments=has_comments, processed_at=ts)

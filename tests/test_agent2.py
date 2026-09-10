@@ -18,6 +18,44 @@ def _executor_and_gateway(*responses):
     return SkillExecutor(gateway), gateway
 
 
+def _write_our_models(tmp_path, monkeypatch, models=None):
+    """V1.10.0：写入临时我方在售车型配置并指向它。
+
+    避免依赖生产 config/our_models.json 的内容。models 传空列表可模拟
+    "未配置我方在售车型"。
+    """
+    import json as _json
+    from app.config import settings
+    default = [{
+        "model_id": "m817", "brand": "东风猛士", "model_name": "猛士M817",
+        "aliases": ["M817", "猛士-M817"], "price_min": 250000,
+        "price_max": 300000, "vehicle_category": "越野车",
+        "powertrain": "增程式", "use_case": ["越野"],
+        "key_features": ["硬派越野"], "target_audience": "越野爱好者"}]
+    cfg = {"models": default if models is None else models}
+    p = tmp_path / "our_models.json"
+    p.write_text(_json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(settings, "our_models_config_path", str(p))
+
+
+def _account(uid, content="随便看看"):
+    return {"account_uid": uid, "account_name": "用户",
+            "account_homepage_screenshot": "",
+            "comment_history": [{
+                "video_title": "t", "comment_content": content,
+                "comment_time": "2026-07-19T14:23:00+08:00",
+                "comment_like_count": 1}]}
+
+
+def _lead_json(**overrides):
+    """最简定级响应；lead_grade 默认 C，故复核与润色均短路（各账号仅 2 跳）。"""
+    d = {"lead_grade": "C", "is_valid_lead": True, "lead_summary": "s",
+         "evidence_comment_ids": ["x"], "confidence": 0.5,
+         "profile_tags": [], "profile_summary": "p", "analysis_text": "a"}
+    d.update(overrides)
+    return json.dumps(d, ensure_ascii=False)
+
+
 @pytest.mark.asyncio
 async def test_profile_with_screenshot():
     lead = json.dumps({
@@ -656,13 +694,21 @@ def test_v110_analysis_prompt_has_our_model_rules():
     assert "our_model_match" in text
     assert "recommend_our_model" in text
     assert "our_model_reason" in text
-    assert "我方在售车型的购车意向" in text      # 第三段述写要求
     assert "逐字一致" in text                    # 推荐车型须用清单名
+    # V1.10.0 终审：第三段只写关系判断与推荐车型，不自述高/中/低
+    # （LLM 不知代码的基准映射与降级矩阵，自述等级会与字段系统性打架）
+    assert "最适合推荐" in text
+    assert "不要在本段给出等级性用语" in text
+    assert "对我方在售车型的购车意向为高/中/低" not in text
+    # V1.10.0 终审：our_model_match 不得输出 null；推荐车型不带品牌前缀
+    assert "不得输出 null" in text
+    assert "不要带品牌前缀" in text
     # 既有关键规则保留
     assert "[阶段二：意向车型识别与分类]" in text
     assert "[阶段三：主页画像有限上调]" in text
     assert "不调整评级" in text
     assert "不得在本段输出任何等级性结论" in text
+
 
 def test_v163_review_result_revision_fields_default_none():
     """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""
@@ -1166,4 +1212,81 @@ async def test_v110_error_item_our_model_fields_null():
     r = out["results"][0]
     assert r["error"]
     assert r["our_model_intent_level"] is None
+    assert r["recommend_our_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_v110_invalid_lead_unlisted_model_nulled(tmp_path, monkeypatch):
+    """V1.10.0 终审 Critical：定级 LLM 自判 is_valid_lead=false 时也须校验。
+
+    门控漏洞回归守护：修复前校验写在 `if out.is_valid_lead:` 内，此路径整段
+    跳过，未校验的车型名经 map_profile_result 的 has_value=False 分支原样
+    透出对外契约。两字段必须为 null。
+    """
+    _write_our_models(tmp_path, monkeypatch)
+    lead = _lead_json(is_valid_lead=False, our_model_match="our_model",
+                      recommend_our_model="不存在的车型X9")
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    req = ProfileAnalysisRequest(accounts=[_account("u114")])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["our_model_intent_level"] is None
+    assert r["recommend_our_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_v110_our_models_not_configured_fields_null(tmp_path,
+                                                          monkeypatch):
+    """V1.10.0 终审：未配置我方在售车型 -> 两字段一律 null。
+
+    配置缺失时等级无事实基础（our_model_match 纯属 LLM 猜测），不得输出。
+    """
+    _write_our_models(tmp_path, monkeypatch, models=[])
+    lead = _lead_json(our_model_match="our_model",
+                      recommend_our_model="猛士M817")
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    req = ProfileAnalysisRequest(accounts=[_account("u115")])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["our_model_intent_level"] is None
+    assert r["recommend_our_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_v110_recommend_model_alias_and_brand_prefix(tmp_path,
+                                                           monkeypatch):
+    """V1.10.0 终审：别称与"品牌+车型名"都回落到正式车型名。
+
+    清单渲染行形如"- 东风猛士 猛士M817：售价…"，模型照抄品牌前缀不应变成
+    假 null。
+    """
+    _write_our_models(tmp_path, monkeypatch)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, _lead_json(our_model_match="our_model",
+                                      recommend_our_model="M817"),
+        NOT_FILTERED_JSON, _lead_json(our_model_match="our_model",
+                                      recommend_our_model="东风猛士 猛士M817"))
+    req = ProfileAnalysisRequest(
+        accounts=[_account("u116"), _account("u117")])
+    out = await run_profile_analysis(executor, gateway, req)
+    assert out["results"][0]["recommend_our_model"] == "猛士M817"
+    assert out["results"][1]["recommend_our_model"] == "猛士M817"
+
+
+@pytest.mark.asyncio
+async def test_v110_null_our_model_match_keeps_lead(tmp_path, monkeypatch):
+    """V1.10.0 终审：our_model_match 为 null 时账号不失败，等级兜底为低。
+
+    Prompt 全局要求"无证据字段输出 null"，模型照做时不得把整条线索丢掉。
+    """
+    _write_our_models(tmp_path, monkeypatch)
+    lead = _lead_json(our_model_match=None, recommend_our_model=None)
+    executor, gateway = _executor_and_gateway(NOT_FILTERED_JSON, lead)
+    req = ProfileAnalysisRequest(accounts=[_account("u118")])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r.get("error") is None                 # 未落 except 兜底
+    assert r["has_value"] is True                 # 有效 C 级线索照常输出
+    assert r["our_model_intent_level"] == "低"    # None -> unknown -> 低
     assert r["recommend_our_model"] is None
