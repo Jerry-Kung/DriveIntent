@@ -417,7 +417,7 @@ def test_v121_user_analysis_prompt_has_match_rules():
 def test_v121_pipeline_skill_version_bumped():
     from app.workflow.pipeline import SKILL_VERSIONS, USER_ANALYSIS_SKILL
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.4"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.10.0"
     # 流水线版本与 skill 配置版本保持一致，防止只改一处
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -427,7 +427,7 @@ def test_v170_pipeline_skill_version_bumped():
     from app.workflow.pipeline import (SKILL_VERSIONS, USER_ANALYSIS_SKILL,
                                        USER_REVIEW_ADVANCED_SKILL)
     from app.skills.executor import load_skill_config
-    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.8.4"
+    assert SKILL_VERSIONS[USER_ANALYSIS_SKILL] == "1.10.0"
     assert SKILL_VERSIONS[USER_REVIEW_ADVANCED_SKILL] == "1.8.0"
     assert (load_skill_config(USER_ANALYSIS_SKILL).version
             == SKILL_VERSIONS[USER_ANALYSIS_SKILL])
@@ -644,9 +644,25 @@ def test_v163_analysis_prompt_has_fixed_section_headings():
 def test_analysis_config_matches_current_version():
     from app.skills.executor import load_skill_config
     config = load_skill_config("user_lead_analysis")
-    assert config.prompt_file == "user_lead_analysis_v1.8.4.txt"
-    assert config.prompt_version == "v1.8.4"
-    assert config.version == "1.8.4"
+    assert config.prompt_file == "user_lead_analysis_v1.10.0.txt"
+    assert config.prompt_version == "v1.10.0"
+    assert config.version == "1.10.0"
+
+
+def test_v110_analysis_prompt_has_our_model_rules():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("user_lead_analysis")
+    text = render_prompt(config, _analysis_ctx())
+    assert "our_model_match" in text
+    assert "recommend_our_model" in text
+    assert "our_model_reason" in text
+    assert "我方在售车型的购车意向" in text      # 第三段述写要求
+    assert "逐字一致" in text                    # 推荐车型须用清单名
+    # 既有关键规则保留
+    assert "[阶段二：意向车型识别与分类]" in text
+    assert "[阶段三：主页画像有限上调]" in text
+    assert "不调整评级" in text
+    assert "不得在本段输出任何等级性结论" in text
 
 def test_v163_review_result_revision_fields_default_none():
     """V1.6.3：复核结果新增两个叙述修订字段，confirmed 时为 None。"""
