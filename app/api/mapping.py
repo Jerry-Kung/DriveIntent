@@ -18,6 +18,35 @@ _GRADE_MAP = {
 }
 
 
+# V1.10.0：我方在售车型购车意向等级——在"对意向车型的意向强度"基准上按
+# 车型匹配结论确定性降级。LLM 只输出语义判定（our_model_match），降级由代码
+# 计算，保证可测、可复现。基准档取 _GRADE_MAP（H/A→高、B→中、C→低）。
+_OUR_MODEL_MATCH_STEPS = {"our_model": 0, "similar": 1, "unrelated": 2}
+_LEVEL_ORDER = ["高", "中", "低"]
+
+
+def resolve_our_model_intent_level(match: str, lead_grade: str) -> str | None:
+    """由语义匹配枚举与内部等级确定性算出"对我方在售车型的购车意向"。
+
+    - our_model：意向车型即我方在售车型 -> 不降级；
+    - similar：同类且价格区间匹配（竞品）-> 降一级；
+    - unrelated：类型或价格区间不匹配 -> 降两级（默认低意向）；
+    - unknown：识别不出意向车型 -> 直接"低"（默认低意向）；
+    基准为 lead_grade 映射的意向档（H/A→高、B→中、C→低）；
+    lead_grade 非法 -> None。
+    """
+    mapped = _GRADE_MAP.get(lead_grade)
+    if mapped is None:
+        return None
+    base = _LEVEL_ORDER.index(mapped[0])
+    if match == "unknown":
+        return "低"
+    steps = _OUR_MODEL_MATCH_STEPS.get(match)
+    if steps is None:          # 非法/缺省枚举按最低意向处理，不抛错
+        return "低"
+    return _LEVEL_ORDER[min(base + steps, len(_LEVEL_ORDER) - 1)]
+
+
 def now_iso() -> str:
     return datetime.now(_TZ).isoformat(timespec="seconds")
 
@@ -94,6 +123,8 @@ def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,
             intent_models=list(out.intent_models),
             intent_model_category=out.intent_model_category,
             recommended_entry_point=out.recommended_entry_point,
+            our_model_intent_level=out.our_model_intent_level,
+            recommend_our_model=out.recommend_our_model,
             is_blacklisted=out.is_blacklisted,
             blacklist_type=out.blacklist_type,
             blacklist_reason=out.blacklist_reason,
@@ -112,6 +143,8 @@ def map_profile_result(out: UserLeadResult, *, screenshot_available: bool,
         intent_models=list(out.intent_models),
         intent_model_category=out.intent_model_category,
         recommended_entry_point=out.recommended_entry_point,
+        our_model_intent_level=out.our_model_intent_level,
+        recommend_our_model=out.recommend_our_model,
         is_blacklisted=out.is_blacklisted,
         blacklist_type=out.blacklist_type,
         blacklist_reason=out.blacklist_reason,

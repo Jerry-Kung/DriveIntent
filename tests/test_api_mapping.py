@@ -348,3 +348,62 @@ def test_map_profile_blacklist_defaults_null():
     assert r.is_blacklisted is False
     assert r.blacklist_type is None
     assert r.blacklist_reason is None
+
+
+def test_v110_resolve_our_model_intent_level_matrix():
+    """V1.10.0：降级矩阵——基准(H/A→高, B→中, C→低) × 匹配枚举。"""
+    from app.api.mapping import resolve_our_model_intent_level as f
+    # our_model：不降级
+    assert f("our_model", "H") == "高"
+    assert f("our_model", "B") == "中"
+    assert f("our_model", "C") == "低"
+    # similar：降一级
+    assert f("similar", "H") == "中"   # 高->中
+    assert f("similar", "A") == "中"   # A 基准为高 -> 中
+    assert f("similar", "B") == "低"   # 中->低
+    assert f("similar", "C") == "低"   # 低->低（下限）
+    # unrelated：降两级（默认低）
+    assert f("unrelated", "H") == "低"
+    assert f("unrelated", "A") == "低"
+    assert f("unrelated", "B") == "低"
+    assert f("unrelated", "C") == "低"
+    # unknown：直接低
+    assert f("unknown", "H") == "低"
+    assert f("unknown", "B") == "低"
+    # 非法等级/枚举的兜底
+    assert f("our_model", "X") is None
+    assert f("bogus", "H") == "低"
+
+
+def test_v110_map_profile_carries_our_model_fields():
+    """V1.10.0：两字段透传对外契约（has_value 真/假两分支）。"""
+    from app.api.mapping import map_profile_result
+    from app.schemas.skills import UserLeadResult
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         our_model_intent_level="中",
+                         recommend_our_model="猛士M817")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is True
+    assert r.our_model_intent_level == "中"
+    assert r.recommend_our_model == "猛士M817"
+
+    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                          our_model_intent_level="低",
+                          recommend_our_model="猛士917")
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is False
+    assert r2.our_model_intent_level == "低"
+    assert r2.recommend_our_model == "猛士917"
+
+
+def test_v110_map_profile_our_model_defaults_null():
+    """历史数据/未判定：两字段默认 null，不报错。"""
+    from app.api.mapping import map_profile_result
+    from app.schemas.skills import UserLeadResult
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.our_model_intent_level is None
+    assert r.recommend_our_model is None
