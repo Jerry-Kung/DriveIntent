@@ -1038,3 +1038,116 @@ async def test_v192_error_item_carries_null_blacklist_fields():
     assert r["is_blacklisted"] is False
     assert r["blacklist_type"] is None
     assert r["blacklist_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_v110_profile_carries_our_model_fields(tmp_path, monkeypatch):
+    """V1.10.0：定级输出两字段经降级与校验后透出对外结果。"""
+    import json as _json
+    from app.config import settings
+
+    # 注入我方车型配置，避免依赖生产 config/our_models.json 内容
+    cfg = {"models": [{
+        "model_id": "m817", "brand": "东风猛士", "model_name": "猛士M817",
+        "aliases": ["M817", "猛士-M817"], "price_min": 250000, "price_max": 300000,
+        "vehicle_category": "越野车", "powertrain": "增程式",
+        "use_case": ["越野"], "key_features": ["硬派越野"],
+        "target_audience": "越野爱好者"}]}
+    p = tmp_path / "our_models.json"
+    p.write_text(_json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(settings, "our_models_config_path", str(p))
+
+    lead = json.dumps({
+        "lead_grade": "A", "is_valid_lead": True, "lead_summary": "s",
+        "our_model_match": "similar", "our_model_reason": "意向坦克300与我方M817同属越野车",
+        "recommend_our_model": "猛士M817",
+        "evidence_comment_ids": ["x"], "confidence": 0.8,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"},
+        ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u110", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "坦克300", "comment_content": "想订坦克300",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["our_model_intent_level"] == "中"   # A基准高, similar 降一级
+    assert r["recommend_our_model"] == "猛士M817"
+
+
+@pytest.mark.asyncio
+async def test_v110_recommend_model_not_in_config_nulled(tmp_path, monkeypatch):
+    """V1.10.0：LLM 输出的推荐车型不在我方在售清单 -> 置 null。"""
+    import json as _json
+    from app.config import settings
+
+    # 注入我方车型配置（仅包含 M817）
+    cfg = {"models": [{
+        "model_id": "m817", "brand": "东风猛士", "model_name": "猛士M817",
+        "aliases": [], "price_min": 250000, "price_max": 300000,
+        "vehicle_category": "越野车", "powertrain": "增程式",
+        "use_case": ["越野"], "key_features": ["硬派越野"],
+        "target_audience": "越野爱好者"}]}
+    p = tmp_path / "our_models.json"
+    p.write_text(_json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(settings, "our_models_config_path", str(p))
+
+    lead = json.dumps({
+        "lead_grade": "B", "is_valid_lead": True, "lead_summary": "s",
+        "our_model_match": "unrelated",
+        "recommend_our_model": "不存在的车型X9",
+        "evidence_comment_ids": ["x"], "confidence": 0.7,
+        "profile_tags": [], "profile_summary": "p", "analysis_text": "a"},
+        ensure_ascii=False)
+    executor, gateway = _executor_and_gateway(
+        NOT_FILTERED_JSON, lead, REVIEW_CONFIRMED_JSON, POLISH_OK_JSON)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u111", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "随便看看",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["our_model_intent_level"] == "低"    # B基准中, unrelated 降两级
+    assert r["recommend_our_model"] is None       # 不在配置内 -> null
+
+
+@pytest.mark.asyncio
+async def test_v110_filtered_account_our_model_fields_null():
+    """V1.10.0：被过滤账号（is_valid_lead=False）两字段为 null。"""
+    from tests.test_user_filter import FILTERED_JSON
+    provider = MockProvider()
+    provider.queue(FILTERED_JSON)
+    gateway = LLMGateway(provider)
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u112", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "提车三个月",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(SkillExecutor(gateway), gateway, req)
+    r = out["results"][0]
+    assert r["has_value"] is False
+    assert r["our_model_intent_level"] is None
+    assert r["recommend_our_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_v110_error_item_our_model_fields_null():
+    """V1.10.0：处理失败兜底两字段 null。"""
+    executor, gateway = _executor_and_gateway()
+    req = ProfileAnalysisRequest(accounts=[{
+        "account_uid": "u113", "account_name": "用户",
+        "account_homepage_screenshot": "",
+        "comment_history": [{"video_title": "t", "comment_content": "c",
+                             "comment_time": "2026-07-19T14:23:00+08:00",
+                             "comment_like_count": 1}]}])
+    out = await run_profile_analysis(executor, gateway, req)
+    r = out["results"][0]
+    assert r["error"]
+    assert r["our_model_intent_level"] is None
+    assert r["recommend_our_model"] is None

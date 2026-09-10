@@ -1,13 +1,14 @@
 import json
 import logging
 
-from app.api.mapping import map_profile_result, now_iso
+from app.api.mapping import map_profile_result, now_iso, resolve_our_model_intent_level
 from app.api.schemas import AccountObject, ProfileAnalysisRequest
 from app.llm.base import LLMError
 from app.llm.gateway import LLMGateway, _CURRENT_ACCOUNT
 from app.matching.loader import (build_intent_category_standard,
                                  build_our_models_summary,
-                                 load_intent_categories, load_our_models)
+                                 load_intent_categories, load_our_models,
+                                 normalize)
 from app.schemas.skills import UserLeadResult
 from app.skills.analysis_polish import apply_polish
 from app.skills.executor import extract_json, load_skill_config, render_prompt
@@ -105,9 +106,17 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
     done = 0
     # 我方车型摘要与分类标准与账号无关，整批只加载/构建一次，
     # 避免每账号重复加载与告警刷屏
-    our_models_summary = build_our_models_summary(load_our_models())
+    our_models = load_our_models()
+    our_models_summary = build_our_models_summary(our_models)
     intent_category_standard = build_intent_category_standard(
         load_intent_categories())
+    # V1.10.0：推荐车型校验映射——别称/正名归一化后回落到正式车型名；
+    # 未配置我方车型时为空映射（推荐车型一律置 null）。
+    our_model_names = {normalize(m.model_name): m.model_name
+                       for m in our_models.models} if our_models else {}
+    for m in (our_models.models if our_models else []):
+        for alias in m.aliases:
+            our_model_names.setdefault(normalize(alias), m.model_name)
     for idx, account in enumerate(request.accounts):
         has_comments = len(account.comment_history) > 0
         # V1.7.1：本账号处理期间写入 account_uid 上下文，使 LLM 日志精确
@@ -162,6 +171,15 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
             if grade_sink is not None:
                 # 与 results 按下标对齐；失败账号在 except 分支补 "C"
                 grade_sink.append(out.lead_grade)
+            # V1.10.0：确定性降级算出对我方在售车型的意向等级；推荐车型
+            # 经配置校验，不在我方在售清单内的一律置 null（防 LLM 编造车型名）。
+            # 被过滤/黑名单/无评论账号 is_valid_lead=False，两字段保持 None。
+            if out.is_valid_lead:
+                out.our_model_intent_level = resolve_our_model_intent_level(
+                    out.our_model_match, out.lead_grade)
+                if out.recommend_our_model:
+                    out.recommend_our_model = our_model_names.get(
+                        normalize(out.recommend_our_model))
             mapped = map_profile_result(
                 out, screenshot_available=shot_available,
                 has_comments=has_comments, processed_at=ts)
@@ -176,6 +194,7 @@ async def run_profile_analysis(executor, gateway: LLMGateway,
                 "has_purchase_intent": None,
                 "intent_models": [], "intent_model_category": None,
                 "recommended_entry_point": None,
+                "our_model_intent_level": None, "recommend_our_model": None,
                 "is_blacklisted": False, "blacklist_type": None,
                 "blacklist_reason": None,
                 "profile_tags": [],
