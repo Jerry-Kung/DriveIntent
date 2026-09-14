@@ -69,6 +69,63 @@ def test_detail_page_shows_entry_point(session):
     assert "销售开场白" in html2  # 无键不报错，栏目仍在
 
 
+def test_detail_page_shows_v19_v110_fields(session):
+    """V1.9/V1.10 精筛新增五字段（黑名单三 + 我方在售车型两）在详情页展示。
+
+    注意这五个键只存在于 api_job.result.results[] 的账号对象里，详情页
+    直接渲染该对象，不经 lead_record 汇总表（汇总表列不含它们）。
+    """
+    acct = _acct("u1", code="high")
+    acct.update({"our_model_intent_level": "中",
+                 "recommend_our_model": "猛士M817",
+                 "is_blacklisted": True, "blacklist_type": "confirmed",
+                 "blacklist_reason": "该抖音号已列入系统黑名单"})
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0), [acct])
+    client = _client(session)
+    html = client.get("/leads/j1/0").text
+    for label in ["我方车型意向", "推荐我方车型", "黑名单"]:
+        assert label in html
+    assert "猛士M817" in html
+    assert "确认黑名单" in html          # confirmed → 中文展示
+    assert "该抖音号已列入系统黑名单" in html
+
+
+def test_detail_page_shows_suspect_blacklist_type(session):
+    """疑似黑名单（过滤节点判定）类型为中文枚举，原样展示且与 confirmed 区分。"""
+    acct = _acct("u1", code="low")
+    acct.update({"is_blacklisted": True, "blacklist_type": "营销号",
+                 "blacklist_reason": "评论区反复导流至私域"})
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0), [acct])
+    client = _client(session)
+    html = client.get("/leads/j1/0").text
+    assert "营销号" in html
+    assert "确认黑名单" not in html
+    assert "评论区反复导流至私域" in html
+
+
+def test_detail_page_legacy_data_no_new_keys(session):
+    """V1.9/V1.10 之前的历史数据无这五个键：栏目仍在，值回退 "-"，不报错。"""
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0), [_acct("u1")])
+    client = _client(session)
+    r = client.get("/leads/j1/0")
+    assert r.status_code == 200
+    html = r.text
+    assert "我方车型意向" in html and "推荐我方车型" in html and "黑名单" in html
+    assert "黑名单判定理由" not in html   # 未命中时不出现理由块
+
+
+def test_detail_page_blacklisted_without_reason(session):
+    """命中但理由为空：类型缺失时展示"是"，不出现"理由：None"。"""
+    acct = _acct("u1", code="low")
+    acct.update({"is_blacklisted": True, "blacklist_type": None,
+                 "blacklist_reason": None})
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0), [acct])
+    client = _client(session)
+    html = client.get("/leads/j1/0").text
+    assert "黑名单判定理由" not in html
+    assert "None" not in html
+
+
 def test_detail_page_shows_llm_calls(session):
     t = datetime(2026, 8, 14, 8, 0, 0)
     _job(session, "j1", t, [_acct("u1")])

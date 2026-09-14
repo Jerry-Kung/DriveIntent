@@ -6,6 +6,7 @@
   <p class="crumb"><a href="/leads">← 返回列表</a></p>
   <h1 class="lead-title">
     <span class="grade grade-{{ grade }}">{{ grade }}</span>
+    {% if acct.is_blacklisted %}<span class="pill pill-invalid">黑名单</span>{% endif %}
     <span class="hint">{{ acct.account_uid or "-" }}</span>
   </h1>
 
@@ -51,8 +52,14 @@
       <div><dt>购车意向</dt><dd>{{ acct.has_purchase_intent }}</dd></div>
       <div><dt>意向车型</dt><dd>{{ acct.intent_models | join("、") if acct.intent_models else "-" }}</dd></div>
       <div><dt>车型分类</dt><dd>{{ acct.intent_model_category or "-" }}</dd></div>
+      <div><dt>我方车型意向</dt><dd>{{ acct.our_model_intent_level or "-" }}</dd></div>
+      <div><dt>推荐我方车型</dt><dd>{{ acct.recommend_our_model or "-" }}</dd></div>
+      <div><dt>黑名单</dt><dd>{{ blacklist_label }}</dd></div>
       <div><dt>处理时间</dt><dd>{{ acct.processed_at or "-" }}</dd></div>
     </dl>
+    {% if acct.is_blacklisted and acct.blacklist_reason %}
+    <p class="notice">黑名单判定理由：{{ acct.blacklist_reason }}</p>
+    {% endif %}
     <h3>销售开场白</h3>
     <p class="summary">{{ acct.recommended_entry_point or "-" }}</p>
     <h3>画像标签</h3>
@@ -104,4 +111,7 @@
     .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
     .pre { white-space: pre-wrap; word-break: break-word; background: #f7f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13.5px; }
     .summary { margin-top: 0; }
+    .notice { background: #fbf1f0; border: 1px solid #e5c4c2; border-radius: 8px;
+              padding: 8px 14px; margin: 0 0 14px; font-size: 14px;
+              color: var(--bad); }
 {% endblock %}

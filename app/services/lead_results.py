@@ -324,6 +324,28 @@ def query_lead_results(session: Session, *, grade: str | None = None,
     return {"total": total, "page": page, "size": size, "rows": rows}
 
 
+# 详情页黑名单类型展示：库内 blacklist_type 为对外枚举值（"confirmed"）或
+# 中文枚举（"营销号"/"虚假账号"，见 schemas.skills）。confirmed 在审计界面
+# 显式写作"确认黑名单"，与过滤节点判定的"疑似"两类区分开——二者同置
+# is_blacklisted=true 但来源不同（前者为库内黑名单短路，后者为 LLM 判定）。
+_BLACKLIST_TYPE_LABEL = {"confirmed": "确认黑名单"}
+
+
+def blacklist_label(acct: dict) -> str:
+    """详情页「黑名单」一行与标题徽标的展示文本。
+
+    acct 为 api_job.result.results[] 的账号对象。历史数据（V1.9 之前）无
+    这三个键，一律回退"-"。命中但类型缺失/为空时展示"是"，避免出现
+    "已命中黑名单却显示 -"的自相矛盾读法。
+    """
+    if not acct.get("is_blacklisted"):
+        return "-"
+    t = (acct.get("blacklist_type") or "").strip()
+    if not t:
+        return "是"
+    return _BLACKLIST_TYPE_LABEL.get(t, t)
+
+
 def _call_dict(c) -> dict:
     return {"created_at": _iso_utc8(c.created_at), "skill_id": c.skill_id,
             "skill_version": c.skill_version,
@@ -373,6 +395,7 @@ def lead_detail_data(session: Session, job_id: str, index: int) -> dict | None:
             "progress_total": job.progress_total,
             "acct": acct, "input": input_acct,
             "calls": [_call_dict(c) for c in calls],
+            "blacklist_label": blacklist_label(acct),
             "grade": grade_of(acct, internal_grade)}
 
 
