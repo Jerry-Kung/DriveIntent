@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -112,3 +113,60 @@ def test_removed_endpoints_gone(session):
                  "/api/leads/export/html"]:
         r = client.get(path, follow_redirects=False)
         assert r.status_code in (404, 405), path
+
+
+def test_leads_page_uses_summary_table(session):
+    """V1.10.1：列表页读汇总表，等级筛选与分页均走普通列。"""
+    from app.models import LeadRecord
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0),
+         [_acct("u1", code="high"), _acct("u2", code="low")])
+    assert session.query(LeadRecord).count() == 2
+    client = _client(session)
+    html = client.get("/leads", params={"grade": "H"}).text
+    assert "u1" in html
+    assert "u2" not in html
+    assert "共 1 条" in html
+
+
+def test_leads_page_paging_matches_total(session):
+    """翻页：页数提示与实际分页一致，页间不重不漏。
+
+    列表固定 20 条/页，故造 45 条（3 个作业 × 15 账号）= 3 页。
+    """
+    base = datetime(2026, 8, 14, 8, 0, 0)
+    for i in range(3):
+        _job(session, f"j{i}", base + timedelta(minutes=i),
+             [_acct(f"u{i}_{k}") for k in range(15)])
+    client = _client(session)
+    first = client.get("/leads").text
+    assert "共 45 条" in first
+    assert "第 1/3 页" in first
+    seen = []
+    for page in (1, 2, 3):
+        html = client.get("/leads", params={"page": page}).text
+        assert f"第 {page}/3 页" in html
+        seen += re.findall(r'class="uid">([^<]+)<', html)
+    assert len(seen) == 45
+    assert len(set(seen)) == 45          # 页间不重复
+
+
+def test_api_leads_grade_filter_json(session):
+    _job(session, "j1", datetime(2026, 8, 14, 8, 0, 0),
+         [_acct("u1", code="high"), _acct("u2", code="low"),
+          _acct("u3", code="high")])
+    client = _client(session)
+    data = client.get("/api/leads", params={"grade": "H"}).json()
+    assert data["total"] == 2
+    assert [r["account_uid"] for r in data["rows"]] == ["u1", "u3"]
+
+
+def test_export_csv_reads_summary_table(session):
+    """导出走汇总表，仍是全量（不限当页）。"""
+    base = datetime(2026, 8, 14, 8, 0, 0)
+    for i in range(3):
+        _job(session, f"j{i}", base + timedelta(minutes=i), [_acct(f"u{i}")])
+    client = _client(session)
+    r = client.get("/api/leads/export")
+    assert r.status_code == 200
+    for i in range(3):
+        assert f"u{i}" in r.text

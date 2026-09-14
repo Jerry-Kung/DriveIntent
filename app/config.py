@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # （./data:/app/data），否则容器重启会丢失待处理作业的截图。
     screenshot_staging_dir: str = "data/staging"
 
+    # V1.10.1 线索汇总表（lead_record）就绪标记：历史数据回填完成后由
+    # scripts/backfill_lead_records.py 写入。标记存在前列表页走 JSON 展开
+    # 回退路径，避免回填中途读到不完整的汇总表。与暂存目录同在 ./data
+    # 挂载点下，docker 与裸机部署均可共享。
+    lead_record_ready_marker: str = "data/lead_record_ready"
+
     @property
     def multimodal_model(self) -> str:
         return self.llm_multimodal_model or self.llm_model

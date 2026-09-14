@@ -6,6 +6,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.api import staging
 from app.models import ApiJob
+from app.services.lead_records import replace_records
 
 
 def create_job(session: Session, job_type: str, payload: dict,
@@ -96,6 +97,10 @@ def finish_job(session: Session, job: ApiJob, *, result: dict | None,
         job.lead_grades = lead_grades
     job.finished_at = datetime.utcnow()
     _strip_screenshots(job)
+    # V1.10.1：同一事务物化线索汇总行，列表页不再展开 result 大列
+    if job.job_type == "profile_analysis":
+        replace_records(session, job.id, result, job.lead_grades,
+                        job.finished_at, status)
     session.commit()
 
 
@@ -108,6 +113,10 @@ def fail_or_retry(session: Session, job: ApiJob, error: str) -> None:
         job.error = error
         job.finished_at = datetime.utcnow()
         _strip_screenshots(job)
+        # V1.10.1：终态失败不再保留旧汇总行（重试成功时会重新写入）
+        if job.job_type == "profile_analysis":
+            replace_records(session, job.id, None, None,
+                            job.finished_at, "failed")
     session.commit()
 
 
@@ -128,6 +137,10 @@ def fail_stale_running_jobs(session: Session,
         job.error = f"作业停滞超过 {max_age_minutes} 分钟，已强制判定失败"
         job.finished_at = datetime.utcnow()
         _strip_screenshots(job)
+        # V1.10.1：判为终态失败，清掉旧汇总行，避免列表里留下已废数据
+        if job.job_type == "profile_analysis":
+            replace_records(session, job.id, None, None,
+                            job.finished_at, "failed")
     if stale:
         session.commit()
         # 已判终态，暂存截图不再需要
@@ -211,6 +224,9 @@ def finish_job_by_id(session_factory, job_id: str, *, result: dict | None,
                 stripped = _stripped_payload(payload, vision_text)
                 if stripped is not None:
                     job.request_payload = stripped
+            # V1.10.1：同一事务物化线索汇总行
+            replace_records(s, job_id, result, job.lead_grades,
+                            job.finished_at, status)
         s.commit()
     # 终态后暂存截图不再需要（提交在 commit 之后：先删后崩会丢截图）
     if job is not None and job.job_type == "profile_analysis":
@@ -241,6 +257,8 @@ def fail_or_retry_by_id(session_factory, job_id: str, error: str,
                 stripped = _stripped_payload(payload, vision_text)
                 if stripped is not None:
                     job.request_payload = stripped
+            # V1.10.1：终态失败清掉旧汇总行（重试成功时会重新写入）
+            replace_records(s, job_id, None, None, job.finished_at, "failed")
         s.commit()
     if job_type == "profile_analysis":
         staging.discard(job_id)

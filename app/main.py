@@ -14,6 +14,7 @@ from app.llm.gateway import build_gateway
 from app.logging_filters import install_access_log_filter
 from app.models import ApiJob
 from app.skills.executor import SkillExecutor
+from app.services.lead_results import ensure_marker_for_fresh_db
 from app.web.audit import audit_router
 from app.web.blacklist import blacklist_router
 from app.web.routes import router
@@ -40,6 +41,9 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as s:
         reset_running(s)
         reset_running_jobs(s)
+        # V1.10.1 全新库没有历史精筛作业可回填，直接标记线索汇总表就绪；
+        # 已有历史作业时保持未就绪，等回填脚本自检通过后写标记
+        ensure_marker_for_fresh_db(s)
         # 回收无对应待处理作业的孤儿暂存文件（上次进程崩溃遗留）
         active = {jid for (jid,) in s.query(ApiJob.id).filter(
             ApiJob.status.in_(["pending", "running"])).all()}

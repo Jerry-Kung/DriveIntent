@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
-from app.models import ApiJob, LlmCallLog
+from app.models import ApiJob, LlmCallLog, LeadRecord
+from app.services.lead_records import replace_records
 from app.services.lead_results import (export_lead_results_csv, grade_of,
                                        query_lead_results)
 
@@ -18,7 +19,12 @@ def _acct(uid, code="high", score=90, summary="摘要"):
 
 
 def _job(session, job_id, finished_at, accounts, status="success",
-         payload=None, lead_grades=None):
+         payload=None, lead_grades=None, sync=True):
+    """建作业；sync=True 时同步物化 lead_record（V1.10.1 列表数据源）。
+
+    真实写入路径由 app.api.jobs.finish_job / finish_job_by_id 触发，
+    这里直接调用同一服务函数，保证测试数据与生产一致。
+    """
     job = ApiJob(id=job_id, job_type="profile_analysis", status=status,
                  result=_result(accounts), progress_total=len(accounts),
                  progress_done=len(accounts),
@@ -26,6 +32,10 @@ def _job(session, job_id, finished_at, accounts, status="success",
                  finished_at=finished_at, request_payload=payload,
                  lead_grades=lead_grades)
     session.add(job)
+    session.flush()
+    if sync:
+        replace_records(session, job_id, job.result, job.lead_grades,
+                        job.finished_at, status)
     session.commit()
     return job
 
