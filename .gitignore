@@ -1,4 +1,7 @@
 data/
+config/our_models.json
+config/intent_categories.json
+scripts/temp_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -62,6 +65,9 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+
+# 诊断脚本产生的临时 SQLite 库
+scripts/_diag_*.sqlite
 
 # Flask stuff:
 instance/
@@ -218,3 +224,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code local scaffolding (不入库)
+.superpowers/
+

@@ -1,0 +1,412 @@
+from app.api.mapping import map_screening_item, map_profile_result, now_iso
+from app.schemas.skills import CommentScreeningItem, UserLeadResult
+
+
+def test_now_iso_has_offset():
+    assert "+08:00" in now_iso()
+
+
+def test_map_screening_passed():
+    item = CommentScreeningItem(comment_id="cm_1", is_meaningful=True,
+                                is_suspected_marketing=False,
+                                has_purchase_intent=True, reason="真实车主反馈")
+    r = map_screening_item(item, "2026-07-19T15:30:00+08:00")
+    assert r.passed is True and r.filter_reason is None
+    assert "真实车主反馈" in r.analysis
+
+
+def test_map_screening_marketing_filtered():
+    item = CommentScreeningItem(comment_id="cm_2", is_meaningful=True,
+                                is_suspected_marketing=True, reason="含微信号引流")
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "marketing_account"
+    assert r.filter_reason is None  # V1.1.1：枚举自解释，无需补充说明
+
+
+def test_map_screening_meaningless_filtered():
+    item = CommentScreeningItem(comment_id="cm_3", is_meaningful=False,
+                                reason="纯数字刷屏")
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "noise"
+    assert r.filter_reason is None
+
+
+def test_map_profile_high_to_gao():
+    out = UserLeadResult(lead_grade="H", is_valid_lead=True, confidence=0.9,
+                         profile_tags=["已购车主"], profile_summary="s",
+                         analysis_text="a")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is True
+    assert (r.intent_level, r.intent_level_code) == ("高", "high")
+    assert 85 <= r.value_score <= 100
+
+
+def test_map_profile_c_grade_maps_low():
+    # V1.7.3：C 映射为低(low)；valid C 现已产出价值，不再是 null
+    out = UserLeadResult(lead_grade="C", is_valid_lead=True, confidence=0.5)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is True
+    assert (r.intent_level, r.intent_level_code) == ("低", "low")
+
+
+def test_map_profile_c_grade_invalid_no_value():
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False, confidence=0.5)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.intent_level is None and r.value_score is None
+
+
+def test_map_profile_screenshot_missing_lowers_score():
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True, confidence=0.8)
+    with_shot = map_profile_result(out, screenshot_available=True,
+                                   has_comments=True, processed_at="t")
+    without = map_profile_result(out, screenshot_available=False,
+                                 has_comments=True, processed_at="t")
+    assert without.value_score < with_shot.value_score
+    assert without.value_score >= 70  # 不得跌出 A 级(high) 下界 70（base 77）
+
+
+def test_map_profile_screenshot_missing_high_grade_stays_in_range():
+    out = UserLeadResult(lead_grade="H", is_valid_lead=True, confidence=0.9)
+    without = map_profile_result(out, screenshot_available=False,
+                                 has_comments=True, processed_at="t")
+    assert without.value_score >= 85  # 不得跌出 H 级(high) 85-100 区间
+
+
+def test_map_profile_no_comments():
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False, confidence=0.0)
+    r = map_profile_result(out, screenshot_available=False, has_comments=False,
+                           processed_at="t")
+    assert r.has_value is False
+
+
+def _item(**kw):
+    from app.schemas.skills import CommentScreeningItem
+    base = dict(comment_id="c", is_meaningful=True,
+                is_suspected_marketing=False)
+    base.update(kw)
+    return CommentScreeningItem(**base)
+
+
+def test_v13_rule1_actor_abnormal_wins():
+    # 优先级1：actor 异常类优先于意向标签
+    from app.api.mapping import resolve_filter_type
+    item = _item(comment_actor="marketing_account",
+                 has_purchase_intent=True, is_car_owner=True)
+    assert resolve_filter_type(item) == "marketing_account"
+
+
+def test_v13_rule2_intent_always_passes():
+    # 优先级2：有购车意向必过筛（车主与否均然）
+    from app.api.mapping import resolve_filter_type, map_screening_item
+    for owner in (True, False):
+        item = _item(has_purchase_intent=True, is_car_owner=owner)
+        assert resolve_filter_type(item) == "genuine_user"
+        assert map_screening_item(item, "t").passed is True
+
+
+def test_v13_rule3_owner_without_intent_filtered():
+    # 优先级3：无意向车主（纯讨论/吐槽）不过筛
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=True, has_purchase_intent=False,
+                 positive_attitude=True, reason="我这台油耗8个")
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "no_purchase_intent"
+    assert r.filter_reason is None
+
+
+def test_v13_rule4_non_owner_positive_passes():
+    # 优先级4：无意向非车主有积极信号 → 过筛（B级弱线索）
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=False, has_purchase_intent=False,
+                 positive_attitude=True, reason="内饰真好看")
+    r = map_screening_item(item, "t")
+    assert r.passed is True
+    assert r.filter_type == "genuine_user"
+    assert r.has_purchase_intent is False
+
+
+def test_v13_rule5_non_owner_no_signal_filtered():
+    # 优先级5：无意向非车主无积极信号 → 不过筛
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=False, has_purchase_intent=False,
+                 positive_attitude=False)
+    r = map_screening_item(item, "t")
+    assert r.passed is False
+    assert r.filter_type == "no_purchase_intent"
+
+
+def test_v13_result_carries_labels():
+    from app.api.mapping import map_screening_item
+    item = _item(is_car_owner=True, has_purchase_intent=True)
+    d = map_screening_item(item, "t").model_dump()
+    assert d["is_car_owner"] is True
+    assert d["has_purchase_intent"] is True
+    assert "positive_attitude" not in d       # 内部信号不对外
+    assert "owner_status" not in d
+
+
+def test_v13_legacy_fallback_kept():
+    # LLM 未输出 comment_actor 时回退 V1.0 判定（旧字段兜底）
+    from app.api.mapping import resolve_filter_type
+    marketing = _item(is_suspected_marketing=True, has_purchase_intent=True)
+    noise = _item(is_meaningful=False)
+    assert resolve_filter_type(marketing) == "marketing_account"
+    assert resolve_filter_type(noise) == "noise"
+
+
+def test_map_screening_off_topic():
+    item = CommentScreeningItem(comment_id="c", comment_actor="off_topic")
+    r = map_screening_item(item, "t")
+    assert r.passed is False and r.filter_type == "off_topic"
+
+
+def test_map_screening_no_legacy_fields():
+    # V1.1.1：intent_strength / downgrade_applied / downgrade_reason 不再输出
+    item = CommentScreeningItem(comment_id="c", is_meaningful=True,
+                                intent_strength="high")
+    d = map_screening_item(item, "t").model_dump()
+    assert "intent_strength" not in d
+    assert "downgrade_applied" not in d
+    assert "downgrade_reason" not in d
+
+
+def test_screening_dict_passed_v13_rules():
+    from app.api.mapping import screening_dict_passed
+    # 新数据（含 has_purchase_intent 键）走 V1.3 规则
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": True, "is_car_owner": True}) is True
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": True,
+         "positive_attitude": True}) is False   # 无意向车主
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": False,
+         "positive_attitude": True}) is True    # 非车主积极信号
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "marketing_account",
+         "has_purchase_intent": True}) is False  # actor 异常优先
+
+
+def test_screening_dict_passed_legacy_fallback():
+    from app.api.mapping import screening_dict_passed
+    # 历史数据（无 has_purchase_intent 键）回退旧口径
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": True,
+         "is_suspected_marketing": False}) is True
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": False}) is False
+    assert screening_dict_passed(
+        {"comment_id": "c", "is_purchase_related": True,
+         "is_suspected_marketing": True}) is False
+
+
+def test_screened_out_category():
+    from app.api.mapping import screened_out_category
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "marketing_account",
+         "has_purchase_intent": False}) == "marketing"
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "has_purchase_intent": False, "is_car_owner": True}) == "no_intent"
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": False,
+         "has_purchase_intent": False}) == "unrelated"
+    # 历史数据回退
+    assert screened_out_category(
+        {"comment_id": "c", "is_suspected_marketing": True}) == "marketing"
+    assert screened_out_category(
+        {"comment_id": "c", "is_purchase_related": False}) == "unrelated"
+
+
+def test_screening_dict_passed_v11_data_falls_back():
+    # V1.1~V1.2.1 落库数据：含 comment_actor 但无 has_purchase_intent，
+    # 必须回退旧口径，不得因新字段缺省被误判为无购买意向
+    from app.api.mapping import screened_out_category, screening_dict_passed
+    legacy = {"comment_id": "c", "is_meaningful": True,
+              "comment_actor": "genuine_user",
+              "is_purchase_related": True, "is_suspected_marketing": False}
+    assert screening_dict_passed(legacy) is True
+    assert screened_out_category(
+        {"comment_id": "c", "is_meaningful": True,
+         "comment_actor": "genuine_user",
+         "is_purchase_related": False}) == "unrelated"
+
+
+def test_map_profile_carries_labels():
+    out = UserLeadResult(lead_grade="H", is_valid_lead=True, confidence=0.9,
+                         is_car_owner=True, has_purchase_intent=True)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.is_car_owner is True
+    assert r.has_purchase_intent is True
+
+
+def test_map_profile_no_value_still_carries_labels():
+    # has_value=false（如 C 级且 is_valid_lead=False）仍透出两标签
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                         is_car_owner=True, has_purchase_intent=False)
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.is_car_owner is True
+    assert r.has_purchase_intent is False
+
+
+def test_map_profile_carries_intent_fields():
+    """V1.8.0：意向车型与分类透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         intent_models=["坦克300", "猛士M817"],
+                         intent_model_category="A")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.intent_models == ["坦克300", "猛士M817"]
+    assert r.intent_model_category == "A"
+
+
+def test_map_profile_no_value_still_carries_intent_fields():
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                         intent_models=["五菱宏光"],
+                         intent_model_category="D")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.intent_models == ["五菱宏光"]
+    assert r.intent_model_category == "D"
+
+
+def test_map_profile_intent_defaults_when_absent():
+    """历史/未识别输出：字段默认 [] 与 null，不报错。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.intent_models == []
+    assert r.intent_model_category is None
+
+
+def test_map_profile_carries_entry_point():
+    """V1.8.1：销售开场白透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         recommended_entry_point="您关注的坦克300与我们的猛士M817同为硬派越野")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.recommended_entry_point == "您关注的坦克300与我们的猛士M817同为硬派越野"
+
+    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                          recommended_entry_point="开场白")
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is False
+    assert r2.recommended_entry_point == "开场白"
+
+
+def test_map_profile_entry_point_default_null():
+    """历史数据/LLM 未输出：默认 null，不报错。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.recommended_entry_point is None
+
+
+def test_map_profile_carries_blacklist_fields():
+    """V1.9.2：疑似/确认黑名单三字段透传对外契约（has_value 真/假两分支）。"""
+    out = UserLeadResult(lead_grade="C", is_valid_lead=False,
+                         is_blacklisted=True, blacklist_type="营销号",
+                         blacklist_reason="昵称简介含商业联系方式，评论区多次引流")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is False
+    assert r.is_blacklisted is True
+    assert r.blacklist_type == "营销号"
+    assert r.blacklist_reason.endswith("引流")
+
+    out2 = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                          is_blacklisted=True, blacklist_type="confirmed",
+                          blacklist_reason="该抖音号已列入系统黑名单")
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is True
+    assert r2.is_blacklisted is True
+    assert r2.blacklist_type == "confirmed"
+
+
+def test_map_profile_blacklist_defaults_null():
+    """非黑名单账号：三字段保持 false/null/null。"""
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.is_blacklisted is False
+    assert r.blacklist_type is None
+    assert r.blacklist_reason is None
+
+
+def test_v110_resolve_our_model_intent_level_matrix():
+    """V1.10.0：降级矩阵——基准(H/A→高, B→中, C→低) × 匹配枚举。"""
+    from app.api.mapping import resolve_our_model_intent_level as f
+    # our_model：不降级
+    assert f("our_model", "H") == "高"
+    assert f("our_model", "B") == "中"
+    assert f("our_model", "C") == "低"
+    # similar：降一级
+    assert f("similar", "H") == "中"   # 高->中
+    assert f("similar", "A") == "中"   # A 基准为高 -> 中
+    assert f("similar", "B") == "低"   # 中->低
+    assert f("similar", "C") == "低"   # 低->低（下限）
+    # unrelated：降两级（默认低）
+    assert f("unrelated", "H") == "低"
+    assert f("unrelated", "A") == "低"
+    assert f("unrelated", "B") == "低"
+    assert f("unrelated", "C") == "低"
+    # unknown：直接低
+    assert f("unknown", "H") == "低"
+    assert f("unknown", "B") == "低"
+    # 非法等级/枚举的兜底
+    assert f("our_model", "X") is None
+    assert f("bogus", "H") == "低"
+
+
+def test_v110_map_profile_carries_our_model_fields():
+    """V1.10.0：两字段纯透传对外契约。
+
+    映射层不判语义：清理职责在 agent2（无效线索/未配置车型时置 null，
+    见 test_v110_invalid_lead_unlisted_model_nulled）。此处只验证透传，
+    且 is_valid_lead=False 的 out 到达本函数时两字段已被 agent2 清成 None。
+    """
+    from app.api.mapping import map_profile_result
+    from app.schemas.skills import UserLeadResult
+    out = UserLeadResult(lead_grade="A", is_valid_lead=True,
+                         our_model_intent_level="中",
+                         recommend_our_model="猛士M817")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.has_value is True
+    assert r.our_model_intent_level == "中"
+    assert r.recommend_our_model == "猛士M817"
+
+    out2 = UserLeadResult(lead_grade="C", is_valid_lead=False)
+    r2 = map_profile_result(out2, screenshot_available=True, has_comments=True,
+                            processed_at="t")
+    assert r2.has_value is False
+    assert r2.our_model_intent_level is None
+    assert r2.recommend_our_model is None
+
+
+def test_v110_map_profile_our_model_defaults_null():
+    """历史数据/未判定：两字段默认 null，不报错。"""
+    from app.api.mapping import map_profile_result
+    from app.schemas.skills import UserLeadResult
+    out = UserLeadResult(lead_grade="B")
+    r = map_profile_result(out, screenshot_available=True, has_comments=True,
+                           processed_at="t")
+    assert r.our_model_intent_level is None
+    assert r.recommend_our_model is None

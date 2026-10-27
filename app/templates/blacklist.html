@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}DriveIntent - 黑名单{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <h2>添加黑名单</h2>
+    <form id="blacklist-form" method="post" action="/api/blacklist"
+          class="row" style="flex-direction: column; align-items: stretch;">
+      <div>
+        <label>抖音号（每行或逗号分隔）</label><br>
+        <textarea name="douyin_ids" rows="6"
+                  placeholder="每行或逗号分隔的抖音号"></textarea>
+      </div>
+      <div class="row">
+        <input type="text" name="nickname" placeholder="昵称(可选)">
+        <input type="text" name="remark" placeholder="备注(可选)">
+      </div>
+      <div class="row">
+        <button type="submit" class="btn primary">添加</button>
+        <span id="result" class="hint"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head"><h2>黑名单列表</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>抖音号</th><th>昵称</th><th>备注</th><th>添加时间</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="num">{{ r.douyin_id }}</td>
+            <td>{{ r.nickname or '-' }}</td>
+            <td>{{ r.remark or '-' }}</td>
+            <td class="num">{{ (r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '-') }}</td>
+            <td><button class="btn"
+                        onclick="delBlacklist({{ r.id }})">删除</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not rows %}<div class="empty">暂无黑名单</div>{% endif %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block script %}
+<script>
+  // 删除：fetch DELETE 后刷新页面
+  function delBlacklist(id) {
+    fetch("/api/blacklist/" + id, {method: "DELETE"})
+      .then(function (r) {
+        if (r.status === 204) { location.reload(); }
+        else { alert("删除失败（" + r.status + "）"); }
+      })
+      .catch(function () { alert("请求失败"); });
+  }
+
+  // 提交拦截：默认表单会把页面导航走，这里改 fetch POST，展示统计后刷新列表。
+  document.getElementById("blacklist-form").addEventListener("submit",
+    function (ev) {
+      ev.preventDefault();
+      var form = ev.target;
+      var result = document.getElementById("result");
+      result.textContent = "提交中…";
+      fetch(form.action, {method: "POST", body: new FormData(form)})
+        .then(function (r) {
+          if (!r.ok) { throw new Error("HTTP " + r.status); }
+          return r.json();
+        })
+        .then(function (d) {
+          result.textContent = "新增 " + d.added +
+            " / 跳过重复 " + d.skipped + " / 非法 " + d.invalid;
+          if (d.added > 0) { setTimeout(function () { location.reload(); }, 600); }
+        })
+        .catch(function () {
+          result.textContent = "提交失败，请重试";
+        });
+    });
+</script>
+{% endblock %}

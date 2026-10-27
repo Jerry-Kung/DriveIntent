@@ -1773,12 +1773,30 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 打开 http://localhost:8000 ：导入 `data/test_data.xlsx` → 启动分析 →
 在 `/leads` 查看、审核和导出线索。
 
-评测：分析完成后运行 `python scripts/make_annotation_template.py`
-生成标注模板，人工填写后运行
-`python scripts/evaluate.py data/annotation_filled.csv` 查看指标。
-
 清空当前业务数据：
 python scripts/clear_data.py          # 显示各表行数，输入 yes 确认后清空
 python scripts/clear_data.py --yes    # 跳过确认直接清空
 
 设计文档见 `claude_docs/2026-07-20-v0-design.md`。
+
+## 16. V1 API 与部署
+
+V1 将系统微服务化，对外提供 Bearer 认证的异步 HTTP API：
+
+- `POST /api/v1/comment-screening`：提交评论筛选任务，返回 `job_id`；
+- `POST /api/v1/profile-analysis`：提交用户主页综合分析任务（支持多模态识图），返回 `job_id`；
+- `GET /api/v1/jobs/{job_id}`：轮询任务状态与结果。
+
+所有接口需在请求头携带 `Authorization: Bearer <API_KEY>`（`API_KEYS` 在 `.env` 中配置）。
+
+部署步骤：
+
+```bash
+# 1. 配置环境（复制后填写 API_KEYS、MySQL 与 LLM 配置）
+copy .env.example .env
+
+# 2. 构建并启动全部服务
+docker compose up -d --build
+```
+
+完整设计见 `claude_docs/2026-07-23-v1-design.md`。

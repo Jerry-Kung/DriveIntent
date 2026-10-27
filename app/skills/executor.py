@@ -19,6 +19,8 @@ class SkillConfig(BaseModel):
     description: str = ""
     model_name: str = ""
     temperature: float = 0.1
+    multimodal: bool = False
+    advanced: bool = False
     prompt_file: str
     prompt_version: str
 
@@ -32,7 +34,9 @@ def load_skill_config(skill_id: str) -> SkillConfig:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     model = data.pop("model", {}) or {}
     return SkillConfig(model_name=model.get("name", ""),
-                       temperature=model.get("temperature", 0.1), **data)
+                       temperature=model.get("temperature", 0.1),
+                       multimodal=model.get("multimodal", False),
+                       advanced=model.get("advanced", False), **data)
 
 
 def render_prompt(config: SkillConfig, context: dict[str, str],
@@ -80,6 +84,8 @@ class SkillExecutor:
                     skill_version=config.version,
                     prompt_version=config.prompt_version,
                     model=config.model_name or None,
+                    multimodal=config.multimodal,
+                    advanced=config.advanced,
                     temperature=config.temperature)
             except LLMError as e:
                 raise SkillExecutionError(

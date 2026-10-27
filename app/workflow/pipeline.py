@@ -1,14 +1,24 @@
-import json
+﻿import json
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.matching.loader import (build_intent_category_standard,
+                                 build_our_models_summary,
+                                 load_intent_categories, load_our_models)
 from app.models import AnalysisResult, Comment, Video
-from app.schemas.skills import (CommentScreeningResult, UserLeadResult,
+from app.schemas.skills import (CommentScreeningBatchResult,
+                                CommentScreeningResult, UserLeadResult,
                                 VideoContextResult)
 from app.services.results import get_current_result, save_result
+from app.skills.analysis_polish import apply_polish
+from app.skills.screening_batch import (build_screening_input,
+                                        map_batch_result)
 from app.skills.executor import (SkillExecutionError, SkillExecutor,
                                  load_skill_config)
+from app.skills.user_filter import build_filtered_lead_result, run_user_filter
+from app.skills.user_review import (GRADING_STANDARD, USER_REVIEW_SKILL,
+                                    USER_REVIEW_ADVANCED_SKILL, apply_review)
 from app.workflow.tasks import create_task
 
 VIDEO_CONTEXT_SKILL = "video_context_analysis"
@@ -16,9 +26,11 @@ COMMENT_SCREENING_SKILL = "comment_lead_screening"
 USER_ANALYSIS_SKILL = "user_lead_analysis"
 
 SKILL_VERSIONS = {
-    VIDEO_CONTEXT_SKILL: "1.0",
-    COMMENT_SCREENING_SKILL: "1.0",
-    USER_ANALYSIS_SKILL: "1.0",
+    VIDEO_CONTEXT_SKILL: "1.8.3",
+    COMMENT_SCREENING_SKILL: "1.8.3",
+    USER_ANALYSIS_SKILL: "1.10.0",
+    USER_REVIEW_SKILL: "1.6.3",
+    USER_REVIEW_ADVANCED_SKILL: "1.8.0",
 }
 
 
@@ -38,6 +50,8 @@ async def run_video_context(session: Session, executor: SkillExecutor,
             "preset_model": video.preset_model or "",
         }, ensure_ascii=False),
     }
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个 LLM 调用
+    session.commit()
     out: VideoContextResult = await executor.run(
         VIDEO_CONTEXT_SKILL, context, VideoContextResult)
     config = load_skill_config(VIDEO_CONTEXT_SKILL)
@@ -52,15 +66,12 @@ async def run_video_context(session: Session, executor: SkillExecutor,
 async def _call_screening(executor: SkillExecutor,
                           video_context: dict,
                           comments: list[Comment]) -> CommentScreeningResult:
-    context = {
-        "video_context_json": json.dumps(video_context, ensure_ascii=False),
-        "comments_json": json.dumps(
-            [{"comment_id": str(c.id), "content": c.content}
-             for c in comments], ensure_ascii=False),
-        "comment_count": str(len(comments)),
-    }
-    return await executor.run(
-        COMMENT_SCREENING_SKILL, context, CommentScreeningResult)
+    pairs = [(str(c.id), c.content) for c in comments]
+    context = build_screening_input(video_context, pairs)
+    batch: CommentScreeningBatchResult = await executor.run(
+        COMMENT_SCREENING_SKILL, context, CommentScreeningBatchResult)
+    # LLM 只回传 index，代码层按输入顺序还原真实 comment_id（含完整性校验）
+    return map_batch_result(batch, pairs)
 
 
 def _save_screening_items(session: Session,
@@ -90,32 +101,26 @@ async def screen_comment_batch(session: Session, executor: SkillExecutor,
     if not comments:
         return
     resolved_ids = [c.id for c in comments]
-    expected = {str(c.id) for c in comments}
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个重试/递归
+    # 期间的所有 LLM 调用
+    session.commit()
 
     for _ in range(settings.llm_max_retries):
-        result = await _call_screening(executor, ctx_row.result, comments)
-        if (len(result.items) == len(comments)
-                and {i.comment_id for i in result.items} == expected):
-            _save_screening_items(session, result)
-            return
+        try:
+            result = await _call_screening(executor, ctx_row.result, comments)
+        except ValueError:
+            # index 集合不完整/重复（_call_screening 的映射层抛错），换一次
+            # 全新 LLM 输出重试
+            continue
+        _save_screening_items(session, result)
+        return
     # 多次整批失败：拆半递归；单条仍失败则抛错
     if len(resolved_ids) == 1:
         raise SkillExecutionError(
-            f"评论 {comment_ids} 筛选输出 ID 持续不一致")
+            f"评论 {comment_ids} 筛选输出 index 持续不一致")
     mid = len(resolved_ids) // 2
     await screen_comment_batch(session, executor, video_id, resolved_ids[:mid])
     await screen_comment_batch(session, executor, video_id, resolved_ids[mid:])
-
-
-GRADING_STANDARD = """H级（极高意向）：出现明确交易或行动信号——询问价格/落地价、优惠、
-置换补贴、金融方案、门店/库存/交付、试驾，或明确表达近期购买换车计划。
-A级（较强意向）：进入主动评估对比阶段——对比竞品、讨论优缺点、深入配置差异、
-关注养车成本/保值率/售后、讨论真实使用场景。
-B级（中等意向）：有产品兴趣但未深度决策——讨论外观内饰、浅层配置咨询、
-"有点心动"、未来可能考虑。
-C级（较低意向）：与汽车相关但意向弱——普通吐槽、玩梗、浅层情绪表达。
-判定以购车决策阶段和行动信号为主要标准；同时符合多级时取最高一级；
-没有证据支撑的信息保持未知（null 或空数组），不得推断职业、收入、家庭情况。"""
 
 
 async def run_user_analysis(session: Session, executor: SkillExecutor,
@@ -127,9 +132,27 @@ async def run_user_analysis(session: Session, executor: SkillExecutor,
     context = {
         "user_evidence_json": json.dumps(evidence, ensure_ascii=False),
         "grading_standard": GRADING_STANDARD,
+        "our_models_summary": build_our_models_summary(load_our_models()),
+        "intent_category_standard": build_intent_category_standard(
+            load_intent_categories()),
     }
-    out: UserLeadResult = await executor.run(
-        USER_ANALYSIS_SKILL, context, UserLeadResult)
+    # 只读数据已全部取出，结束事务归还连接；否则连接会被占用整个 LLM 调用
+    session.commit()
+    # V1.6：定级前先过无效用户过滤（fail-open）。命中合成 C 级结果照常
+    # 落 AnalysisResult（含审计字段）；is_valid_lead=False 自然跳过 upsert_lead。
+    filt = await run_user_filter(executor, evidence)
+    # V1.9.2：疑似黑名单（is_blacklisted=true）与六类过滤命中共用同一合成
+    # 路径 build_filtered_lead_result——均直接定 C、不进定级/复核/润色。
+    if filt.is_blacklisted or filt.filtered:
+        out: UserLeadResult = build_filtered_lead_result(filt)
+    else:
+        out = await executor.run(
+            USER_ANALYSIS_SKILL, context, UserLeadResult)
+        # V1.6.2 复核 + V1.6.3 叙述修订（fail-open；被过滤用户跳过）
+        await apply_review(executor, context["user_evidence_json"],
+                           context["our_models_summary"], out)
+        # V1.6.4：复核后统一润色对外叙述（fail-open，只改文本不改级）
+        await apply_polish(executor, out)
     config = load_skill_config(USER_ANALYSIS_SKILL)
     save_result(session, target_type="user", target_id=str(user_id),
                 skill_id=USER_ANALYSIS_SKILL,

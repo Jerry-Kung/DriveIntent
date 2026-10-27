@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.api.mapping import screening_dict_passed
 from app.models import AnalysisResult, Comment, PlatformUser
 from app.services.results import get_current_result
 from app.workflow.pipeline import (COMMENT_SCREENING_SKILL, SKILL_VERSIONS,
@@ -20,9 +21,7 @@ def _valid_screenings(session: Session,
     latest: dict[str, AnalysisResult] = {}
     for r in rows:
         latest[r.target_id] = r
-    return [r for r in latest.values()
-            if r.result.get("is_purchase_related")
-            and not r.result.get("is_suspected_marketing")]
+    return [r for r in latest.values() if screening_dict_passed(r.result)]
 
 
 def candidate_user_ids(session: Session) -> list[int]:

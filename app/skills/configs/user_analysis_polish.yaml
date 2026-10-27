@@ -1,0 +1,12 @@
+skill_id: user_analysis_polish
+version: "1.6.4"
+description: >
+  analysis 润色节点：对定级+复核后的三个对外叙述字段
+  （analysis_text / lead_summary / profile_summary）做一次专门润色，
+  清除英文字段名/枚举值/布尔字面量泄漏，消除叙述与最终定级的矛盾，
+  提升可读性。只改文本不改级；fail-open，失败保留原文。
+model:
+  name: ""
+  temperature: 0.1
+prompt_file: user_analysis_polish_v1.6.4.txt
+prompt_version: "v1.6.4"

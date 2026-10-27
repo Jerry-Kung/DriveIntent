@@ -19,6 +19,75 @@ def test_extract_json_with_fence():
         extract_json("完全不是 JSON")
 
 
+def test_skill_config_multimodal_defaults_false():
+    cfg = SkillConfig(skill_id="t", version="1.0", prompt_file="x.txt",
+                      prompt_version="v1")
+    assert cfg.multimodal is False
+
+
+def test_load_skill_config_reads_multimodal(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "vis.yaml").write_text(
+        'skill_id: vis\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  multimodal: true\n'
+        'prompt_file: vis_v1.txt\nprompt_version: "v1"\n', encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    cfg = ex.load_skill_config("vis")
+    assert cfg.multimodal is True
+
+
+async def test_executor_passes_multimodal_to_gateway(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"; prompt_dir = tmp_path / "prompts"
+    cfg_dir.mkdir(); prompt_dir.mkdir()
+    (cfg_dir / "demo.yaml").write_text(
+        'skill_id: demo\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  multimodal: true\nprompt_file: demo_v1.txt\n'
+        'prompt_version: "v1"\n', encoding="utf-8")
+    (prompt_dir / "demo_v1.txt").write_text("$q", encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(ex, "PROMPT_DIR", prompt_dir)
+
+    captured = {}
+
+    class Gw:
+        async def chat(self, messages, **kwargs):
+            captured.update(kwargs)
+            from app.llm.base import LLMResponse
+            return LLMResponse(text='{"answer": "好"}')
+
+    executor = SkillExecutor(Gw(), max_retries=1)
+    await executor.run("demo", {"q": "hi"}, Out)
+    assert captured["multimodal"] is True
+
+
+async def test_executor_passes_advanced_to_gateway(tmp_path, monkeypatch):
+    import app.skills.executor as ex
+    cfg_dir = tmp_path / "configs"; prompt_dir = tmp_path / "prompts"
+    cfg_dir.mkdir(); prompt_dir.mkdir()
+    (cfg_dir / "demo.yaml").write_text(
+        'skill_id: demo\nversion: "1.0"\nmodel:\n  name: ""\n'
+        '  temperature: 0.1\n  advanced: true\nprompt_file: demo_v1.txt\n'
+        'prompt_version: "v1"\n', encoding="utf-8")
+    (prompt_dir / "demo_v1.txt").write_text("$q", encoding="utf-8")
+    monkeypatch.setattr(ex, "CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(ex, "PROMPT_DIR", prompt_dir)
+
+    captured = {}
+
+    class Gw:
+        async def chat(self, messages, **kwargs):
+            captured.update(kwargs)
+            from app.llm.base import LLMResponse
+            return LLMResponse(text='{"answer": "好"}')
+
+    executor = SkillExecutor(Gw(), max_retries=1)
+    await executor.run("demo", {"q": "hi"}, Out)
+    assert captured["advanced"] is True
+
+
 def test_render_prompt_keeps_json_braces():
     cfg = SkillConfig(skill_id="t", version="1.0", prompt_file="x.txt",
                       prompt_version="v1")
@@ -84,7 +153,8 @@ async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
     calls = {"n": 0}
 
     class AlwaysFailProvider(MockProvider):
-        async def chat(self, messages, *, model, temperature):
+        async def chat(self, messages, *, model, temperature,
+                       enable_thinking=False):
             calls["n"] += 1
             raise LLMError("boom")
 
@@ -94,3 +164,59 @@ async def test_executor_does_not_retry_on_llm_error(tmp_path, monkeypatch):
         await executor.run("demo", {"q": "hi"}, Out)
     # gateway 自身重试 3 次（max_retries=3），执行器层不应再叠加重试
     assert calls["n"] == 3
+
+
+def test_v183_video_context_config_uses_v183():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("video_context_analysis")
+    assert config.prompt_file == "video_context_analysis_v1.8.3.txt"
+    assert config.prompt_version == "v1.8.3"
+    assert config.version == "1.8.3"
+
+
+def test_v183_screening_config_uses_v183():
+    from app.skills.executor import load_skill_config
+    config = load_skill_config("comment_lead_screening")
+    assert config.prompt_file == "comment_lead_screening_v1.8.3.txt"
+    assert config.prompt_version == "v1.8.3"
+    assert config.version == "1.8.3"
+
+
+def test_v11_video_context_prompt_renders_with_new_fields():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("video_context_analysis")
+    text = render_prompt(config, {"video_json": "{}"})
+    assert "price_range_min" in text
+    assert "vehicle_category" in text
+    assert "use_case" in text
+    # V1.8.3：四字段数组化措辞
+    assert "数组" in text
+    assert "所有" in text
+
+
+def test_v13_screening_prompt_renders_with_label_fields():
+    from app.skills.executor import load_skill_config, render_prompt
+    config = load_skill_config("comment_lead_screening")
+    text = render_prompt(config, {"video_context_json": "{}",
+                                  "comments_json": "[]",
+                                  "comment_count": "0"})
+    assert "is_car_owner" in text
+    assert "has_purchase_intent" in text
+    assert "positive_attitude" in text
+    assert "comment_actor" in text
+    assert "owner_status" not in text          # 旧枚举字段退场
+    # 车主判定反例约束
+    assert "准备订" in text or "想下定" in text
+    # 车主意向词例与非本人意向规则
+    assert "置换" in text
+    assert "我朋友想买" in text
+    # no_purchase_intent 由代码合成，不得出现在 LLM 输出模板中
+    assert "no_purchase_intent" not in text
+    # V1.8.3：视频语境品牌/车型改数组后，target_brand/model 明确单值选取
+    assert "单个字符串" in text
+    assert "禁止输出数组" in text
+
+
+def test_v13_pipeline_screening_version_bumped():
+    from app.workflow.pipeline import COMMENT_SCREENING_SKILL, SKILL_VERSIONS
+    assert SKILL_VERSIONS[COMMENT_SCREENING_SKILL] == "1.8.3"
